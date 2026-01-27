@@ -1,0 +1,86 @@
+---
+name: "Network Integration Tests"
+
+concurrency:
+  group: ${{ github.actor == 'pre-commit-ci[bot]' && format('integration-bot-{0}', github.run_id) || 'integration' }}
+  cancel-in-progress: true
+
+on:
+  pull_request_target:
+    branches: [main]
+    types:
+      - labeled
+      - opened
+      - reopened
+      - synchronize
+    paths:
+      - "plugins/**"
+      - "tests/integration/**"
+  workflow_dispatch:
+  schedule:
+    - cron: "0 1 * * *"
+
+jobs:
+  check-actor:
+    name: Check Actor
+    if: github.actor != 'pre-commit-ci[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Actor ${{ github.actor }} is allowed to run integration tests"
+  safe-to-test:
+    needs:
+      - check-actor
+    if: >-
+      always() &&
+      needs.check-actor.result == 'success' &&
+      github.event_name == 'pull_request_target' &&
+      (github.event.label.name == 'safe to test' ||
+      github.event.action != 'labeled')
+    uses: ansible-network/github_actions/.github/workflows/safe-to-test.yml@main
+
+  network-integration:
+    name: Network Integration Tests
+    runs-on: [splunk-itsi]
+    # Protect the workflow from running on PRs without approval
+    environment:
+      name: ${{ github.event_name == 'schedule' && 'eco-itsi-daily' || 'eco-itsi-protected' }}
+    needs:
+      - check-actor
+      - safe-to-test
+    if: >-
+      always() &&
+      needs.check-actor.result == 'success' &&
+      (needs.safe-to-test.result == 'success' || needs.safe-to-test.result == 'skipped')
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          path: ansible_collections/splunk/itsi
+          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
+
+      - name: Install ansible-core
+        working-directory: ansible_collections/splunk/itsi
+        run: |
+          rm -rf ~/venv-itsi
+          python -m venv ~/venv-itsi
+          source ~/venv-itsi/bin/activate
+          pip install -r requirements.txt
+
+      - name: Install collection dependencies
+        run: |
+          source ~/venv-itsi/bin/activate
+          ansible-galaxy collection install ansible.netcommon ansible.utils -p ./ansible_collections
+
+      - name: Generate inventory file
+        working-directory: ansible_collections/splunk/itsi
+        run: tests/integration/generate_inventory.sh
+        env:
+          ITSI_HOSTNAME: ${{ secrets.ITSI_HOSTNAME }}
+          ITSI_USERNAME: ${{ secrets.ITSI_USERNAME }}
+          ITSI_PASSWORD: ${{ secrets.ITSI_PASSWORD }}
+
+      - name: Run network integration tests
+        working-directory: ansible_collections/splunk/itsi
+        run: |
+          source ~/venv-itsi/bin/activate
+          ansible-test network-integration -v --color yes
