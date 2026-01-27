@@ -1,0 +1,19 @@
+---
+# Test correlation search name (no spaces for reliable URL handling)
+test_correlation_search_name: "ansible-test-correlation-search"
+
+# Test correlation search configuration
+test_correlation_search:
+  search: "index=itsi_summary | head 1"
+  description: "Ansible integration test correlation search"
+  disabled: false
+  cron_schedule: "*/10 * * * *"
+  earliest_time: "-15m"
+  latest_time: "now"
+  actions: "itsi_event_generator"
+
+# Updated configuration for testing updates
+test_correlation_search_updated:
+  cron_schedule: "*/5 * * * *"
+  description: "Updated description by Ansible"
+  disabled: true

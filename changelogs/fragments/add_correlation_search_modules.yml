@@ -1,0 +1,6 @@
+---
+minor_changes:
+  - Add new module ``itsi_correlation_search`` for managing ITSI correlation searches (create, update, delete).
+  - Add new module ``itsi_correlation_search_info`` for querying ITSI correlation searches.
+  - Add integration tests for itsi_correlation_search and itsi_correlation_search_info modules.
+  - Add unit tests for itsi_correlation_search and itsi_correlation_search_info modules.

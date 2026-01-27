@@ -1,0 +1,313 @@
+---
+- name: START itsi_correlation_search integration tests
+  ansible.builtin.debug:
+    msg: "START itsi_correlation_search integration tests on connection={{ ansible_connection }}"
+
+# Cleanup before starting tests
+- name: Remove correlation search before starting tests
+  ansible.builtin.include_tasks: _remove_config.yaml
+
+- block:
+    # =========================================================================
+    # Step 1: Check mode for CREATE operation
+    # =========================================================================
+    - name: "Step 1 - Check mode: Create correlation search (dry run)"
+      splunk.itsi.itsi_correlation_search:
+        name: "{{ test_correlation_search_name }}"
+        search: "{{ test_correlation_search.search }}"
+        description: "{{ test_correlation_search.description }}"
+        disabled: "{{ test_correlation_search.disabled }}"
+        cron_schedule: "{{ test_correlation_search.cron_schedule }}"
+        earliest_time: "{{ test_correlation_search.earliest_time }}"
+        latest_time: "{{ test_correlation_search.latest_time }}"
+        actions: "{{ test_correlation_search.actions }}"
+        state: present
+      check_mode: true
+      register: check_mode_create_result
+
+    - name: "Step 1 - Assert check mode create returns changed=true and operation=create"
+      ansible.builtin.assert:
+        that:
+          - check_mode_create_result.changed == true
+          - check_mode_create_result.operation == 'create'
+          - check_mode_create_result.status == 200
+        fail_msg: "Check mode create should report changed=true and operation=create"
+        success_msg: "Check mode create correctly reports would create"
+
+    - name: "Step 1 - Verify correlation search does NOT exist after check mode (using info module)"
+      splunk.itsi.itsi_correlation_search_info:
+        name: "{{ test_correlation_search_name }}"
+      register: verify_not_created
+
+    - name: "Step 1 - Assert correlation search was not actually created in check mode"
+      ansible.builtin.assert:
+        that:
+          - verify_not_created.status == 404 or verify_not_created.correlation_search is none
+        fail_msg: "Correlation search should NOT exist after check mode"
+        success_msg: "Verified: Check mode did not create the correlation search"
+
+    # =========================================================================
+    # Step 2: Create with PRESENT state
+    # =========================================================================
+    - name: "Step 2 - Create correlation search with present state"
+      splunk.itsi.itsi_correlation_search:
+        name: "{{ test_correlation_search_name }}"
+        search: "{{ test_correlation_search.search }}"
+        description: "{{ test_correlation_search.description }}"
+        disabled: "{{ test_correlation_search.disabled }}"
+        cron_schedule: "{{ test_correlation_search.cron_schedule }}"
+        earliest_time: "{{ test_correlation_search.earliest_time }}"
+        latest_time: "{{ test_correlation_search.latest_time }}"
+        actions: "{{ test_correlation_search.actions }}"
+        state: present
+      register: create_result
+
+    - name: "Step 2 - Assert create operation succeeded"
+      ansible.builtin.assert:
+        that:
+          - create_result.changed == true
+          - create_result.operation == 'create'
+          - create_result.status == 200
+        fail_msg: "Create operation should succeed with changed=true"
+        success_msg: "Create operation succeeded"
+
+    # =========================================================================
+    # Step 3: Idempotency test for PRESENT state (no changes)
+    # =========================================================================
+    - name: "Step 3 - Run present state again (idempotency test)"
+      splunk.itsi.itsi_correlation_search:
+        name: "{{ test_correlation_search_name }}"
+        search: "{{ test_correlation_search.search }}"
+        description: "{{ test_correlation_search.description }}"
+        disabled: "{{ test_correlation_search.disabled }}"
+        cron_schedule: "{{ test_correlation_search.cron_schedule }}"
+        earliest_time: "{{ test_correlation_search.earliest_time }}"
+        latest_time: "{{ test_correlation_search.latest_time }}"
+        actions: "{{ test_correlation_search.actions }}"
+        state: present
+      register: idempotent_result
+
+    - name: "Step 3 - Assert idempotency (no changes on second run)"
+      ansible.builtin.assert:
+        that:
+          - idempotent_result.changed == false
+          - idempotent_result.operation == 'no_change'
+        fail_msg: "Idempotency failed - second run should not report changes"
+        success_msg: "Idempotency verified - no changes on second run"
+
+    # =========================================================================
+    # Step 4: Update correlation search with new values
+    # =========================================================================
+    - name: "Step 4 - Update correlation search with new configuration"
+      splunk.itsi.itsi_correlation_search:
+        name: "{{ test_correlation_search_name }}"
+        cron_schedule: "{{ test_correlation_search_updated.cron_schedule }}"
+        description: "{{ test_correlation_search_updated.description }}"
+        disabled: "{{ test_correlation_search_updated.disabled }}"
+        state: present
+      register: update_result
+
+    - name: "Step 4 - Assert update operation succeeded"
+      ansible.builtin.assert:
+        that:
+          - update_result.changed == true
+          - update_result.operation == 'update'
+          - update_result.status == 200
+        fail_msg: "Update operation should succeed with changed=true"
+        success_msg: "Update operation succeeded"
+
+    - name: "Step 4 - Verify updated values with info module"
+      splunk.itsi.itsi_correlation_search_info:
+        name: "{{ test_correlation_search_name }}"
+      register: info_after_update
+
+    - name: "Step 4 - Assert updated values are correct"
+      ansible.builtin.assert:
+        that:
+          - info_after_update.status == 200
+          - info_after_update.correlation_search is defined
+        fail_msg: "Info module should return updated correlation search"
+        success_msg: "Verified: Correlation search was updated successfully"
+
+    - name: "Step 4 - Debug updated correlation search"
+      ansible.builtin.debug:
+        var: info_after_update.correlation_search
+        verbosity: 1
+
+    # =========================================================================
+    # Step 5: Idempotency test for UPDATE (no changes after update)
+    # =========================================================================
+    - name: "Step 5 - Run update again (idempotency test)"
+      splunk.itsi.itsi_correlation_search:
+        name: "{{ test_correlation_search_name }}"
+        cron_schedule: "{{ test_correlation_search_updated.cron_schedule }}"
+        description: "{{ test_correlation_search_updated.description }}"
+        disabled: "{{ test_correlation_search_updated.disabled }}"
+        state: present
+      register: update_idempotent_result
+
+    - name: "Step 5 - Assert update idempotency (no changes on second update)"
+      ansible.builtin.assert:
+        that:
+          - update_idempotent_result.changed == false
+          - update_idempotent_result.operation == 'no_change'
+        fail_msg: "Update idempotency failed - second update should not report changes"
+        success_msg: "Update idempotency verified - no changes on second update"
+
+    # =========================================================================
+    # Step 6: Get info with info module (various query methods)
+    # =========================================================================
+    - name: "Step 6a - Get correlation search info by name (using info module)"
+      splunk.itsi.itsi_correlation_search_info:
+        name: "{{ test_correlation_search_name }}"
+      register: info_by_name
+
+    - name: "Step 6a - Assert info module query by name succeeded"
+      ansible.builtin.assert:
+        that:
+          - info_by_name.changed == false
+          - info_by_name.status == 200
+          - info_by_name.correlation_search is defined
+          - info_by_name.correlation_search is not none
+        fail_msg: "Info module query by name should succeed"
+        success_msg: "Info module query by name succeeded"
+
+    - name: "Step 6c - List all correlation searches (using info module)"
+      splunk.itsi.itsi_correlation_search_info:
+      register: info_list_all
+
+    - name: "Step 6c - Assert info module list all succeeded"
+      ansible.builtin.assert:
+        that:
+          - info_list_all.changed == false
+          - info_list_all.status == 200
+          - info_list_all.correlation_searches is defined
+        fail_msg: "Info module list all should succeed"
+        success_msg: "Info module list all succeeded - found {{ info_list_all.correlation_searches | length }} searches"
+
+    - name: "Step 6d - List correlation searches with count limit (using info module)"
+      splunk.itsi.itsi_correlation_search_info:
+        count: 3
+      register: info_limited
+
+    - name: "Step 6d - Assert info module limited query returned exactly 3 objects"
+      ansible.builtin.assert:
+        that:
+          - info_limited.changed == false
+          - info_limited.status == 200
+          - info_limited.correlation_searches is defined
+          - info_limited.correlation_searches | length == 3
+        fail_msg: "Info module limited query should return exactly 3 correlation searches, got {{ info_limited.correlation_searches | length | default(0) }}"
+        success_msg: "Info module limited query succeeded - returned {{ info_limited.correlation_searches | length }} searches as expected"
+
+    - name: "Step 6 - Debug correlation search info"
+      ansible.builtin.debug:
+        var: info_by_name.correlation_search
+        verbosity: 1
+
+    # =========================================================================
+    # Step 7: Check mode for DELETE operation
+    # =========================================================================
+    - name: "Step 7 - Check mode: Delete correlation search (dry run)"
+      splunk.itsi.itsi_correlation_search:
+        name: "{{ test_correlation_search_name }}"
+        state: absent
+      check_mode: true
+      register: check_mode_delete_result
+
+    - name: "Step 7 - Assert check mode delete returns changed=true"
+      ansible.builtin.assert:
+        that:
+          - check_mode_delete_result.changed == true
+          - check_mode_delete_result.operation == 'delete'
+          - check_mode_delete_result.status == 204
+        fail_msg: "Check mode delete should report changed=true and operation=delete"
+        success_msg: "Check mode delete correctly reports would delete"
+
+    - name: "Step 7 - Verify correlation search still exists after check mode delete (using info module)"
+      splunk.itsi.itsi_correlation_search_info:
+        name: "{{ test_correlation_search_name }}"
+      register: verify_still_exists
+
+    - name: "Step 7 - Assert correlation search was not deleted in check mode"
+      ansible.builtin.assert:
+        that:
+          - verify_still_exists.status == 200
+          - verify_still_exists.correlation_search is defined
+          - verify_still_exists.correlation_search is not none
+        fail_msg: "Correlation search should still exist after check mode delete"
+        success_msg: "Verified: Check mode did not delete the correlation search"
+
+    # =========================================================================
+    # Step 8: Delete with ABSENT state
+    # =========================================================================
+    - name: "Step 8 - Delete correlation search with absent state"
+      splunk.itsi.itsi_correlation_search:
+        name: "{{ test_correlation_search_name }}"
+        state: absent
+      register: delete_result
+
+    - name: "Step 8 - Assert delete operation succeeded"
+      ansible.builtin.assert:
+        that:
+          - delete_result.changed == true
+          - delete_result.operation == 'delete'
+          - delete_result.status == 204
+        fail_msg: "Delete operation should succeed with changed=true"
+        success_msg: "Delete operation succeeded"
+
+    # =========================================================================
+    # Step 9: Idempotency test for ABSENT state
+    # =========================================================================
+    - name: "Step 9 - Run absent state again (idempotency test)"
+      splunk.itsi.itsi_correlation_search:
+        name: "{{ test_correlation_search_name }}"
+        state: absent
+      register: absent_idempotent_result
+
+    - name: "Step 9 - Assert idempotency for absent (no changes when already deleted)"
+      ansible.builtin.assert:
+        that:
+          - absent_idempotent_result.changed == false
+          - absent_idempotent_result.operation == 'no_change'
+          - absent_idempotent_result.status == 404
+        fail_msg: "Idempotency failed - absent on non-existent should not report changes"
+        success_msg: "Idempotency verified - no changes when already absent"
+
+    # =========================================================================
+    # Step 10: Get info with info module after deletion and verify non-existence
+    # =========================================================================
+    - name: "Step 10a - Get correlation search info after deletion (using info module)"
+      splunk.itsi.itsi_correlation_search_info:
+        name: "{{ test_correlation_search_name }}"
+      register: info_after_delete
+
+    - name: "Step 10a - Assert correlation search no longer exists"
+      ansible.builtin.assert:
+        that:
+          - info_after_delete.changed == false
+          - info_after_delete.status == 404 or info_after_delete.correlation_search is none
+        fail_msg: "Correlation search should not exist after deletion"
+        success_msg: "Verified: Correlation search no longer exists after deletion"
+
+    - name: "Step 10b - Query non-existent search is handled gracefully (using info module)"
+      splunk.itsi.itsi_correlation_search_info:
+        name: "NonExistentCorrelationSearch12345"
+      register: info_nonexistent
+
+    - name: "Step 10b - Assert non-existent query handled gracefully"
+      ansible.builtin.assert:
+        that:
+          - info_nonexistent.changed == false
+          - info_nonexistent.status == 404 or info_nonexistent.correlation_search is none
+        fail_msg: "Non-existent query should be handled gracefully"
+        success_msg: "Non-existent query handled gracefully"
+
+    - name: "COMPLETED - All integration tests passed"
+      ansible.builtin.debug:
+        msg: "All itsi_correlation_search and itsi_correlation_search_info integration tests completed successfully!"
+
+  always:
+    # Cleanup after tests (even on failure)
+    - name: Final cleanup
+      ansible.builtin.include_tasks: _remove_config.yaml

@@ -79,7 +79,16 @@ PEP440 is the schema used to describe the versions of Ansible.
 ## Included content
 
 <!--start collection content-->
+### Httpapi plugins
+Name | Description
+--- | ---
+[splunk.itsi.itsi_api_client](https://github.com/ansible-collections/splunk.itsi/blob/main/docs/splunk.itsi.itsi_api_client_httpapi.rst)|HttpApi Plugin for Splunk ITSI
+
 ### Modules
+Name | Description
+--- | ---
+[splunk.itsi.itsi_correlation_search](https://github.com/ansible-collections/splunk.itsi/blob/main/docs/splunk.itsi.itsi_correlation_search_module.rst)|Manage Splunk ITSI correlation searches
+[splunk.itsi.itsi_correlation_search_info](https://github.com/ansible-collections/splunk.itsi/blob/main/docs/splunk.itsi.itsi_correlation_search_info_module.rst)|Query Splunk ITSI correlation searches
 
 <!--end collection content-->
 

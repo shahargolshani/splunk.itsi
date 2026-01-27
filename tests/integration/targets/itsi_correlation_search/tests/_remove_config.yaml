@@ -1,0 +1,12 @@
+---
+- name: Remove correlation search (cleanup)
+  splunk.itsi.itsi_correlation_search:
+    name: "{{ test_correlation_search_name }}"
+    state: absent
+  register: cleanup_result
+  ignore_errors: true
+
+- name: Debug cleanup result
+  ansible.builtin.debug:
+    var: cleanup_result
+    verbosity: 1

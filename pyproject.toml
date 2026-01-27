@@ -1,0 +1,14 @@
+[tool.black]
+line-length = 140
+
+[tool.isort]
+profile = "black"
+line_length = 140
+
+[tool.pylint.format]
+max-line-length = 140
+
+[tool.pytest.ini_options]
+addopts = ["-vvv", "-n", "2", "--log-level", "WARNING", "--color", "yes"]
+testpaths = ["tests"]
+filterwarnings = ['ignore:AnsibleCollectionFinder has already been configured']
