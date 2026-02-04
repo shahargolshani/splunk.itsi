@@ -1,0 +1,443 @@
+---
+- name: START itsi_aggregation_policy integration tests
+  ansible.builtin.debug:
+    msg: "START itsi_aggregation_policy integration tests on connection={{ ansible_connection }}"
+
+# Cleanup before starting tests
+- name: Remove aggregation policy before starting tests
+  ansible.builtin.include_tasks: _remove_config.yaml
+
+- block:
+    # =========================================================================
+    # Step 1: Check mode for CREATE operation
+    # =========================================================================
+    - name: "Step 1 - Check mode: Create aggregation policy (dry run)"
+      splunk.itsi.itsi_aggregation_policy:
+        title: "{{ test_aggregation_policy_title }}"
+        description: "{{ test_aggregation_policy.description }}"
+        disabled: "{{ test_aggregation_policy.disabled }}"
+        priority: "{{ test_aggregation_policy.priority }}"
+        group_severity: "{{ test_aggregation_policy.group_severity }}"
+        group_status: "{{ test_aggregation_policy.group_status }}"
+        group_title: "{{ test_aggregation_policy.group_title }}"
+        group_description: "{{ test_aggregation_policy.group_description }}"
+        filter_criteria: "{{ test_aggregation_policy.filter_criteria }}"
+        breaking_criteria: "{{ test_aggregation_policy.breaking_criteria }}"
+        state: present
+      check_mode: true
+      register: check_mode_create_result
+
+    - name: "Step 1 - Assert check mode create returns changed=true and operation=create"
+      ansible.builtin.assert:
+        that:
+          - check_mode_create_result.changed == true
+          - check_mode_create_result.operation == 'create'
+          - check_mode_create_result.status == 200
+        fail_msg: "Check mode create should report changed=true and operation=create"
+        success_msg: "Check mode create correctly reports would create"
+
+    - name: "Step 1 - Verify aggregation policy does NOT exist after check mode (using info module)"
+      splunk.itsi.itsi_aggregation_policy_info:
+        title: "{{ test_aggregation_policy_title }}"
+      register: verify_not_created
+
+    - name: "Step 1 - Assert aggregation policy was not actually created in check mode"
+      ansible.builtin.assert:
+        that:
+          - verify_not_created.aggregation_policies | length == 0 or verify_not_created.aggregation_policy is none
+        fail_msg: "Aggregation policy should NOT exist after check mode"
+        success_msg: "Verified: Check mode did not create the aggregation policy"
+
+    # =========================================================================
+    # Step 2: Create with PRESENT state
+    # =========================================================================
+    - name: "Step 2 - Create aggregation policy with present state"
+      splunk.itsi.itsi_aggregation_policy:
+        title: "{{ test_aggregation_policy_title }}"
+        description: "{{ test_aggregation_policy.description }}"
+        disabled: "{{ test_aggregation_policy.disabled }}"
+        priority: "{{ test_aggregation_policy.priority }}"
+        group_severity: "{{ test_aggregation_policy.group_severity }}"
+        group_status: "{{ test_aggregation_policy.group_status }}"
+        group_title: "{{ test_aggregation_policy.group_title }}"
+        group_description: "{{ test_aggregation_policy.group_description }}"
+        filter_criteria: "{{ test_aggregation_policy.filter_criteria }}"
+        breaking_criteria: "{{ test_aggregation_policy.breaking_criteria }}"
+        state: present
+      register: create_result
+
+    - name: "Step 2 - Assert create operation succeeded"
+      ansible.builtin.assert:
+        that:
+          - create_result.changed == true
+          - create_result.operation == 'create'
+          - create_result.status == 200
+          - create_result.aggregation_policy is defined
+          - create_result.aggregation_policy._key is defined
+        fail_msg: "Create operation should succeed with changed=true"
+        success_msg: "Create operation succeeded"
+
+    - name: "Step 2 - Store policy_id for subsequent tests"
+      ansible.builtin.set_fact:
+        test_policy_id: "{{ create_result.aggregation_policy._key }}"
+
+    - name: "Step 2 - Verify created policy with info module"
+      splunk.itsi.itsi_aggregation_policy_info:
+        policy_id: "{{ test_policy_id }}"
+      register: verify_create
+
+    - name: "Step 2 - Assert created policy exists and has correct values"
+      ansible.builtin.assert:
+        that:
+          - verify_create.status == 200
+          - verify_create.aggregation_policy is defined
+          - verify_create.aggregation_policy.title == test_aggregation_policy_title
+        fail_msg: "Created policy should exist and have correct title"
+        success_msg: "Verified: Policy created with correct values"
+
+    # =========================================================================
+    # Step 3: Idempotency test for CREATE (run create again without policy_id)
+    # Note: Without policy_id, this will create a NEW policy (not idempotent by design)
+    # =========================================================================
+    - name: "Step 3 - Document: Create without policy_id always creates new policy"
+      ansible.builtin.debug:
+        msg: "Note: Creating without policy_id always creates a new policy. This is by design since titles are not unique."
+
+    # =========================================================================
+    # Step 4: Idempotency test with policy_id (no changes)
+    # =========================================================================
+    - name: "Step 4 - Run present state with policy_id (idempotency test)"
+      splunk.itsi.itsi_aggregation_policy:
+        policy_id: "{{ test_policy_id }}"
+        description: "{{ test_aggregation_policy.description }}"
+        disabled: "{{ test_aggregation_policy.disabled }}"
+        priority: "{{ test_aggregation_policy.priority }}"
+        group_severity: "{{ test_aggregation_policy.group_severity }}"
+        state: present
+      register: idempotent_result
+
+    - name: "Step 4 - Assert idempotency (no changes on second run with same values)"
+      ansible.builtin.assert:
+        that:
+          - idempotent_result.changed == false
+          - idempotent_result.operation == 'no_change'
+        fail_msg: "Idempotency failed - second run with same values should not report changes"
+        success_msg: "Idempotency verified - no changes on second run"
+
+    # =========================================================================
+    # Step 5: Check mode for UPDATE operation
+    # =========================================================================
+    - name: "Step 5 - Check mode: Update aggregation policy (dry run)"
+      splunk.itsi.itsi_aggregation_policy:
+        policy_id: "{{ test_policy_id }}"
+        description: "{{ test_aggregation_policy_updated.description }}"
+        disabled: "{{ test_aggregation_policy_updated.disabled }}"
+        priority: "{{ test_aggregation_policy_updated.priority }}"
+        group_severity: "{{ test_aggregation_policy_updated.group_severity }}"
+        state: present
+      check_mode: true
+      register: check_mode_update_result
+
+    - name: "Step 5 - Assert check mode update returns changed=true and operation=update"
+      ansible.builtin.assert:
+        that:
+          - check_mode_update_result.changed == true
+          - check_mode_update_result.operation == 'update'
+        fail_msg: "Check mode update should report changed=true and operation=update"
+        success_msg: "Check mode update correctly reports would update"
+
+    - name: "Step 5 - Verify policy was NOT updated after check mode (using info module)"
+      splunk.itsi.itsi_aggregation_policy_info:
+        policy_id: "{{ test_policy_id }}"
+      register: verify_not_updated
+
+    - name: "Step 5 - Assert policy still has original values after check mode"
+      ansible.builtin.assert:
+        that:
+          - verify_not_updated.aggregation_policy.description == test_aggregation_policy.description
+        fail_msg: "Policy should NOT be updated after check mode"
+        success_msg: "Verified: Check mode did not update the policy"
+
+    # =========================================================================
+    # Step 6: Update aggregation policy with new values
+    # =========================================================================
+    - name: "Step 6 - Update aggregation policy with new configuration"
+      splunk.itsi.itsi_aggregation_policy:
+        policy_id: "{{ test_policy_id }}"
+        description: "{{ test_aggregation_policy_updated.description }}"
+        disabled: "{{ test_aggregation_policy_updated.disabled }}"
+        priority: "{{ test_aggregation_policy_updated.priority }}"
+        group_severity: "{{ test_aggregation_policy_updated.group_severity }}"
+        state: present
+      register: update_result
+
+    - name: "Step 6 - Assert update operation succeeded"
+      ansible.builtin.assert:
+        that:
+          - update_result.changed == true
+          - update_result.operation == 'update'
+          - update_result.status == 200
+          - update_result.diff is defined
+        fail_msg: "Update operation should succeed with changed=true"
+        success_msg: "Update operation succeeded"
+
+    - name: "Step 6 - Debug update diff"
+      ansible.builtin.debug:
+        var: update_result.diff
+        verbosity: 1
+
+    - name: "Step 6 - Verify updated values with info module"
+      splunk.itsi.itsi_aggregation_policy_info:
+        policy_id: "{{ test_policy_id }}"
+      register: info_after_update
+
+    - name: "Step 6 - Assert updated values are correct"
+      ansible.builtin.assert:
+        that:
+          - info_after_update.status == 200
+          - info_after_update.aggregation_policy is defined
+          - info_after_update.aggregation_policy.description == test_aggregation_policy_updated.description
+        fail_msg: "Info module should return updated aggregation policy with new description"
+        success_msg: "Verified: Aggregation policy was updated successfully"
+
+    - name: "Step 6 - Debug updated aggregation policy"
+      ansible.builtin.debug:
+        var: info_after_update.aggregation_policy
+        verbosity: 1
+
+    # =========================================================================
+    # Step 7: Idempotency test for UPDATE (no changes after update)
+    # =========================================================================
+    - name: "Step 7 - Run update again (idempotency test)"
+      splunk.itsi.itsi_aggregation_policy:
+        policy_id: "{{ test_policy_id }}"
+        description: "{{ test_aggregation_policy_updated.description }}"
+        disabled: "{{ test_aggregation_policy_updated.disabled }}"
+        priority: "{{ test_aggregation_policy_updated.priority }}"
+        group_severity: "{{ test_aggregation_policy_updated.group_severity }}"
+        state: present
+      register: update_idempotent_result
+
+    - name: "Step 7 - Assert update idempotency (no changes on second update)"
+      ansible.builtin.assert:
+        that:
+          - update_idempotent_result.changed == false
+          - update_idempotent_result.operation == 'no_change'
+        fail_msg: "Update idempotency failed - second update should not report changes"
+        success_msg: "Update idempotency verified - no changes on second update"
+
+    # =========================================================================
+    # Step 8: Test info module - various query methods
+    # =========================================================================
+    - name: "Step 8a - Get aggregation policy info by policy_id (using info module)"
+      splunk.itsi.itsi_aggregation_policy_info:
+        policy_id: "{{ test_policy_id }}"
+      register: info_by_id
+
+    - name: "Step 8a - Assert info module query by policy_id succeeded"
+      ansible.builtin.assert:
+        that:
+          - info_by_id.changed == false
+          - info_by_id.status == 200
+          - info_by_id.aggregation_policy is defined
+          - info_by_id.aggregation_policy is not none
+          - info_by_id.aggregation_policy._key == test_policy_id
+        fail_msg: "Info module query by policy_id should succeed"
+        success_msg: "Info module query by policy_id succeeded"
+
+    - name: "Step 8b - Get aggregation policy info by title (using info module)"
+      splunk.itsi.itsi_aggregation_policy_info:
+        title: "{{ test_aggregation_policy_title }}"
+      register: info_by_title
+
+    - name: "Step 8b - Assert info module query by title succeeded"
+      ansible.builtin.assert:
+        that:
+          - info_by_title.changed == false
+          - info_by_title.status == 200
+          - info_by_title.aggregation_policies is defined
+          - info_by_title.aggregation_policies | length >= 1
+        fail_msg: "Info module query by title should succeed and return at least one policy"
+        success_msg: "Info module query by title succeeded - found {{ info_by_title.aggregation_policies | length }} policies"
+
+    - name: "Step 8c - List all aggregation policies (using info module)"
+      splunk.itsi.itsi_aggregation_policy_info:
+      register: info_list_all
+
+    - name: "Step 8c - Assert info module list all succeeded"
+      ansible.builtin.assert:
+        that:
+          - info_list_all.changed == false
+          - info_list_all.status == 200
+          - info_list_all.aggregation_policies is defined
+        fail_msg: "Info module list all should succeed"
+        success_msg: "Info module list all succeeded - found {{ info_list_all.aggregation_policies | length }} policies"
+
+    - name: "Step 8d - List aggregation policies with limit (using info module)"
+      splunk.itsi.itsi_aggregation_policy_info:
+        limit: 3
+      register: info_limited
+
+    - name: "Step 8d - Assert info module limited query returned results"
+      ansible.builtin.assert:
+        that:
+          - info_limited.changed == false
+          - info_limited.status == 200
+          - info_limited.aggregation_policies is defined
+          - info_limited.aggregation_policies | length <= 3
+        fail_msg: "Info module limited query should return at most 3 policies"
+        success_msg: "Info module limited query succeeded - returned {{ info_limited.aggregation_policies | length }} policies"
+
+    - name: "Step 8e - Get policy with specific fields only (using info module)"
+      splunk.itsi.itsi_aggregation_policy_info:
+        policy_id: "{{ test_policy_id }}"
+        fields: "_key,title,disabled,priority"
+      register: info_with_fields
+
+    - name: "Step 8e - Assert info module with fields projection succeeded"
+      ansible.builtin.assert:
+        that:
+          - info_with_fields.changed == false
+          - info_with_fields.status == 200
+          - info_with_fields.aggregation_policy is defined
+        fail_msg: "Info module with fields projection should succeed"
+        success_msg: "Info module with fields projection succeeded"
+
+    # =========================================================================
+    # Step 9: Check mode for DELETE operation
+    # =========================================================================
+    - name: "Step 9 - Check mode: Delete aggregation policy (dry run)"
+      splunk.itsi.itsi_aggregation_policy:
+        policy_id: "{{ test_policy_id }}"
+        state: absent
+      check_mode: true
+      register: check_mode_delete_result
+
+    - name: "Step 9 - Assert check mode delete returns changed=true"
+      ansible.builtin.assert:
+        that:
+          - check_mode_delete_result.changed == true
+          - check_mode_delete_result.operation == 'delete'
+          - check_mode_delete_result.status == 204
+        fail_msg: "Check mode delete should report changed=true and operation=delete"
+        success_msg: "Check mode delete correctly reports would delete"
+
+    - name: "Step 9 - Verify aggregation policy still exists after check mode delete (using info module)"
+      splunk.itsi.itsi_aggregation_policy_info:
+        policy_id: "{{ test_policy_id }}"
+      register: verify_still_exists
+
+    - name: "Step 9 - Assert aggregation policy was not deleted in check mode"
+      ansible.builtin.assert:
+        that:
+          - verify_still_exists.status == 200
+          - verify_still_exists.aggregation_policy is defined
+          - verify_still_exists.aggregation_policy is not none
+        fail_msg: "Aggregation policy should still exist after check mode delete"
+        success_msg: "Verified: Check mode did not delete the aggregation policy"
+
+    # =========================================================================
+    # Step 10: Delete with ABSENT state
+    # =========================================================================
+    - name: "Step 10 - Delete aggregation policy with absent state"
+      splunk.itsi.itsi_aggregation_policy:
+        policy_id: "{{ test_policy_id }}"
+        state: absent
+      register: delete_result
+
+    - name: "Step 10 - Assert delete operation succeeded"
+      ansible.builtin.assert:
+        that:
+          - delete_result.changed == true
+          - delete_result.operation == 'delete'
+          - delete_result.status == 204
+        fail_msg: "Delete operation should succeed with changed=true"
+        success_msg: "Delete operation succeeded"
+
+    # =========================================================================
+    # Step 11: Idempotency test for ABSENT state
+    # =========================================================================
+    - name: "Step 11 - Run absent state again (idempotency test)"
+      splunk.itsi.itsi_aggregation_policy:
+        policy_id: "{{ test_policy_id }}"
+        state: absent
+      register: absent_idempotent_result
+
+    - name: "Step 11 - Assert idempotency for absent (no changes when already deleted)"
+      ansible.builtin.assert:
+        that:
+          - absent_idempotent_result.changed == false
+          - absent_idempotent_result.operation == 'no_change'
+          - absent_idempotent_result.status == 404
+        fail_msg: "Idempotency failed - absent on non-existent should not report changes"
+        success_msg: "Idempotency verified - no changes when already absent"
+
+    # =========================================================================
+    # Step 12: Verify deletion with info module
+    # =========================================================================
+    - name: "Step 12a - Get aggregation policy info after deletion (using info module)"
+      splunk.itsi.itsi_aggregation_policy_info:
+        policy_id: "{{ test_policy_id }}"
+      register: info_after_delete
+
+    - name: "Step 12a - Assert aggregation policy no longer exists"
+      ansible.builtin.assert:
+        that:
+          - info_after_delete.changed == false
+          - info_after_delete.status == 404 or info_after_delete.aggregation_policy is none
+        fail_msg: "Aggregation policy should not exist after deletion"
+        success_msg: "Verified: Aggregation policy no longer exists after deletion"
+
+    - name: "Step 12b - Query by title after deletion (using info module)"
+      splunk.itsi.itsi_aggregation_policy_info:
+        title: "{{ test_aggregation_policy_title }}"
+      register: info_by_title_after_delete
+
+    - name: "Step 12b - Assert no policies found with test title after deletion"
+      ansible.builtin.assert:
+        that:
+          - info_by_title_after_delete.changed == false
+          - info_by_title_after_delete.aggregation_policies | length == 0
+        fail_msg: "No policies should exist with test title after deletion"
+        success_msg: "Verified: No policies found with test title after deletion"
+
+    - name: "Step 12c - Query non-existent policy is handled gracefully (using info module)"
+      splunk.itsi.itsi_aggregation_policy_info:
+        policy_id: "NonExistentPolicyId12345"
+      register: info_nonexistent
+
+    - name: "Step 12c - Assert non-existent query handled gracefully"
+      ansible.builtin.assert:
+        that:
+          - info_nonexistent.changed == false
+          - info_nonexistent.status == 404 or info_nonexistent.aggregation_policy is none
+        fail_msg: "Non-existent query should be handled gracefully"
+        success_msg: "Non-existent query handled gracefully"
+
+    # =========================================================================
+    # Step 13: Test error handling - update non-existent policy
+    # =========================================================================
+    - name: "Step 13 - Attempt to update non-existent policy (error handling)"
+      splunk.itsi.itsi_aggregation_policy:
+        policy_id: "NonExistentPolicyId12345"
+        description: "This should fail"
+        state: present
+      register: update_nonexistent_result
+
+    - name: "Step 13 - Assert update of non-existent policy returns error"
+      ansible.builtin.assert:
+        that:
+          - update_nonexistent_result.changed == false
+          - update_nonexistent_result.status == 404
+          - update_nonexistent_result.operation == 'error'
+        fail_msg: "Update of non-existent policy should return error with status 404"
+        success_msg: "Error handling verified: Update of non-existent policy correctly returns error"
+
+    - name: "COMPLETED - All integration tests passed"
+      ansible.builtin.debug:
+        msg: "All itsi_aggregation_policy and itsi_aggregation_policy_info integration tests completed successfully!"
+
+  always:
+    # Cleanup after tests (even on failure)
+    - name: Final cleanup
+      ansible.builtin.include_tasks: _remove_config.yaml

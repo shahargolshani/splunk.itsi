@@ -1,0 +1,23 @@
+---
+# Cleanup task to remove test aggregation policy
+# Used before and after tests to ensure clean state
+
+- name: Get all policies with test title (to find policy_id for cleanup)
+  splunk.itsi.itsi_aggregation_policy_info:
+    title: "{{ test_aggregation_policy_title }}"
+  register: cleanup_find_result
+  ignore_errors: true
+
+- name: Remove all aggregation policies with test title (cleanup)
+  splunk.itsi.itsi_aggregation_policy:
+    policy_id: "{{ item._key }}"
+    state: absent
+  loop: "{{ cleanup_find_result.aggregation_policies | default([]) }}"
+  register: cleanup_result
+  ignore_errors: true
+  when: cleanup_find_result.aggregation_policies is defined and cleanup_find_result.aggregation_policies | length > 0
+
+- name: Debug cleanup result
+  ansible.builtin.debug:
+    var: cleanup_result
+    verbosity: 1

@@ -1,0 +1,26 @@
+---
+# Test aggregation policy title (unique for test isolation)
+test_aggregation_policy_title: "Ansible Integration Test Policy"
+
+# Test aggregation policy configuration for initial creation
+test_aggregation_policy:
+  description: "Ansible integration test aggregation policy"
+  disabled: false
+  priority: 5
+  group_severity: "medium"
+  group_status: "new"
+  group_title: "%title%"
+  group_description: "%description%"
+  filter_criteria:
+    condition: "AND"
+    items: []
+  breaking_criteria:
+    condition: "AND"
+    items: []
+
+# Updated configuration for testing updates
+test_aggregation_policy_updated:
+  description: "Updated description by Ansible"
+  disabled: true
+  priority: 8
+  group_severity: "high"
