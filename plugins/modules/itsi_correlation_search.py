@@ -2,11 +2,6 @@
 # -*- coding: utf-8 -*-
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 # Copyright (c) 2026 Splunk ITSI Ansible Collection maintainers
-"""Ansible module for managing Splunk ITSI correlation searches."""
-
-from __future__ import absolute_import, division, print_function
-
-__metaclass__ = type
 
 DOCUMENTATION = r"""
 ---

@@ -1,0 +1,365 @@
+---
+- name: START itsi_service integration tests
+  ansible.builtin.debug:
+    msg: "START itsi_service integration tests on connection={{ ansible_connection }}"
+
+- name: Remove services before starting tests
+  ansible.builtin.include_tasks: _remove_config.yaml
+
+- block:
+    # Service WITH Template #
+    # Check mode CREATE
+    - name: Check mode - Create service with template (dry run)
+      splunk.itsi.itsi_service: &template_create_params
+        name: "{{ test_service_with_template_name }}"
+        description: "{{ test_service_with_template.description }}"
+        enabled: "{{ test_service_with_template.enabled }}"
+        sec_grp: "{{ test_service_with_template.sec_grp }}"
+        base_service_template_id: "{{ test_service_with_template.base_service_template_id }}"
+        service_tags: "{{ test_service_with_template.service_tags }}"
+        state: present
+      check_mode: true
+      register: check_mode_create_template_result
+
+    - name: Assert check mode create returns changed=true
+      ansible.builtin.assert:
+        that:
+          - check_mode_create_template_result.changed == true
+
+    - name: Verify service does NOT exist after check mode
+      splunk.itsi.itsi_service_info:
+        title: "{{ test_service_with_template_name }}"
+      register: verify_not_created_template
+
+    - name: Assert service was not created in check mode
+      ansible.builtin.assert:
+        that:
+          - verify_not_created_template['items'] | length == 0
+
+    # CREATE
+    - name: Create service with template
+      splunk.itsi.itsi_service: *template_create_params
+      register: create_template_result
+
+    - name: Assert create succeeded
+      ansible.builtin.assert:
+        that:
+          - create_template_result.changed == true
+
+    - name: Verify service exists
+      splunk.itsi.itsi_service_info:
+        title: "{{ test_service_with_template_name }}"
+      register: verify_created_template
+
+    - name: Assert service was created
+      ansible.builtin.assert:
+        that:
+          - verify_created_template['items'] | length > 0
+          - verify_created_template['items'][0].title == test_service_with_template_name
+
+    # Idempotency (base_service_template_id is ignored when service exists)
+    - name: Run present again (idempotency)
+      splunk.itsi.itsi_service: *template_create_params
+      register: idempotent_template_result
+
+    - name: Assert no changes on second run
+      ansible.builtin.assert:
+        that:
+          - idempotent_template_result.changed == false
+
+    # UPDATE
+    - name: Update service with template
+      splunk.itsi.itsi_service: &template_update_params
+        name: "{{ test_service_with_template_name }}"
+        description: "{{ test_service_with_template_updated.description }}"
+        enabled: "{{ test_service_with_template_updated.enabled }}"
+        service_tags: "{{ test_service_with_template_updated.service_tags }}"
+        state: present
+      register: update_template_result
+
+    - name: Assert update succeeded
+      ansible.builtin.assert:
+        that:
+          - update_template_result.changed == true
+
+    - name: Verify updated values
+      splunk.itsi.itsi_service_info:
+        title: "{{ test_service_with_template_name }}"
+      register: info_after_update_template
+
+    - name: Assert updated values are correct
+      ansible.builtin.assert:
+        that:
+          - info_after_update_template['items'] | length > 0
+          - info_after_update_template['items'][0].description == test_service_with_template_updated.description
+
+    # Update idempotency
+    - name: Run update again (idempotency)
+      splunk.itsi.itsi_service: *template_update_params
+      register: update_idempotent_template_result
+
+    - name: Assert no changes on second update
+      ansible.builtin.assert:
+        that:
+          - update_idempotent_template_result.changed == false
+
+    # Check mode DELETE
+    - name: Check mode - Delete service (dry run)
+      splunk.itsi.itsi_service:
+        name: "{{ test_service_with_template_name }}"
+        state: absent
+      check_mode: true
+      register: check_mode_delete_template_result
+
+    - name: Assert check mode delete returns changed=true
+      ansible.builtin.assert:
+        that:
+          - check_mode_delete_template_result.changed == true
+
+    - name: Verify service still exists after check mode delete
+      splunk.itsi.itsi_service_info:
+        title: "{{ test_service_with_template_name }}"
+      register: verify_still_exists_template
+
+    - name: Assert service was not deleted in check mode
+      ansible.builtin.assert:
+        that:
+          - verify_still_exists_template['items'] | length > 0
+
+    # DELETE
+    - name: Delete service with template
+      splunk.itsi.itsi_service: &template_delete_params
+        name: "{{ test_service_with_template_name }}"
+        state: absent
+      register: delete_template_result
+
+    - name: Assert delete succeeded
+      ansible.builtin.assert:
+        that:
+          - delete_template_result.changed == true
+
+    # Delete idempotency
+    - name: Run absent again (idempotency)
+      splunk.itsi.itsi_service: *template_delete_params
+      register: absent_idempotent_template_result
+
+    - name: Assert no changes when already absent
+      ansible.builtin.assert:
+        that:
+          - absent_idempotent_template_result.changed == false
+
+    - name: Verify service no longer exists
+      splunk.itsi.itsi_service_info:
+        title: "{{ test_service_with_template_name }}"
+      register: verify_deleted_template
+
+    - name: Assert service was deleted
+      ansible.builtin.assert:
+        that:
+          - verify_deleted_template['items'] | length == 0
+
+    # Service WITHOUT Template #
+    # Check mode CREATE
+    - name: Check mode - Create service without template (dry run)
+      splunk.itsi.itsi_service: &no_template_create_params
+        name: "{{ test_service_no_template_name }}"
+        description: "{{ test_service_no_template.description }}"
+        enabled: "{{ test_service_no_template.enabled }}"
+        sec_grp: "{{ test_service_no_template.sec_grp }}"
+        entity_rules: "{{ test_service_no_template.entity_rules }}"
+        service_tags: "{{ test_service_no_template.service_tags }}"
+        state: present
+      check_mode: true
+      register: check_mode_create_no_template_result
+
+    - name: Assert check mode create returns changed=true
+      ansible.builtin.assert:
+        that:
+          - check_mode_create_no_template_result.changed == true
+
+    - name: Verify service does NOT exist after check mode
+      splunk.itsi.itsi_service_info:
+        title: "{{ test_service_no_template_name }}"
+      register: verify_not_created_no_template
+
+    - name: Assert service was not created in check mode
+      ansible.builtin.assert:
+        that:
+          - verify_not_created_no_template['items'] | length == 0
+
+    # CREATE
+    - name: Create service without template
+      splunk.itsi.itsi_service: *no_template_create_params
+      register: create_no_template_result
+
+    - name: Assert create succeeded
+      ansible.builtin.assert:
+        that:
+          - create_no_template_result.changed == true
+
+    - name: Verify service exists
+      splunk.itsi.itsi_service_info:
+        title: "{{ test_service_no_template_name }}"
+      register: verify_created_no_template
+
+    - name: Assert service was created
+      ansible.builtin.assert:
+        that:
+          - verify_created_no_template['items'] | length > 0
+          - verify_created_no_template['items'][0].title == test_service_no_template_name
+
+    # Idempotency
+    - name: Run present again (idempotency)
+      splunk.itsi.itsi_service: *no_template_create_params
+      register: idempotent_no_template_result
+
+    - name: Assert no changes on second run
+      ansible.builtin.assert:
+        that:
+          - idempotent_no_template_result.changed == false
+
+    # UPDATE
+    - name: Update service without template
+      splunk.itsi.itsi_service: &no_template_update_params
+        name: "{{ test_service_no_template_name }}"
+        description: "{{ test_service_no_template_updated.description }}"
+        enabled: "{{ test_service_no_template_updated.enabled }}"
+        entity_rules: "{{ test_service_no_template_updated.entity_rules }}"
+        service_tags: "{{ test_service_no_template_updated.service_tags }}"
+        state: present
+      register: update_no_template_result
+
+    - name: Assert update succeeded
+      ansible.builtin.assert:
+        that:
+          - update_no_template_result.changed == true
+
+    - name: Verify updated values
+      splunk.itsi.itsi_service_info:
+        title: "{{ test_service_no_template_name }}"
+      register: info_after_update_no_template
+
+    - name: Assert updated values are correct
+      ansible.builtin.assert:
+        that:
+          - info_after_update_no_template['items'] | length > 0
+          - info_after_update_no_template['items'][0].description == test_service_no_template_updated.description
+
+    # Update idempotency
+    - name: Run update again (idempotency)
+      splunk.itsi.itsi_service: *no_template_update_params
+      register: update_idempotent_no_template_result
+
+    - name: Assert no changes on second update
+      ansible.builtin.assert:
+        that:
+          - update_idempotent_no_template_result.changed == false
+
+    # Info module queries
+    - name: Get service info by title
+      splunk.itsi.itsi_service_info:
+        title: "{{ test_service_no_template_name }}"
+      register: info_by_title
+
+    - name: Assert info query by title succeeded
+      ansible.builtin.assert:
+        that:
+          - info_by_title.changed == false
+          - info_by_title['items'] | length > 0
+
+    - name: List all services
+      splunk.itsi.itsi_service_info:
+      register: info_list_all
+
+    - name: Assert list all succeeded
+      ansible.builtin.assert:
+        that:
+          - info_list_all.changed == false
+          - info_list_all['items'] is defined
+
+    - name: List services with count limit
+      splunk.itsi.itsi_service_info:
+        count: 3
+      register: info_limited
+
+    - name: Assert limited query succeeded
+      ansible.builtin.assert:
+        that:
+          - info_limited.changed == false
+          - info_limited['items'] is defined
+          - info_limited['items'] | length <= 3
+
+    # Check mode DELETE
+    - name: Check mode - Delete service (dry run)
+      splunk.itsi.itsi_service:
+        name: "{{ test_service_no_template_name }}"
+        state: absent
+      check_mode: true
+      register: check_mode_delete_no_template_result
+
+    - name: Assert check mode delete returns changed=true
+      ansible.builtin.assert:
+        that:
+          - check_mode_delete_no_template_result.changed == true
+
+    - name: Verify service still exists after check mode delete
+      splunk.itsi.itsi_service_info:
+        title: "{{ test_service_no_template_name }}"
+      register: verify_still_exists_no_template
+
+    - name: Assert service was not deleted in check mode
+      ansible.builtin.assert:
+        that:
+          - verify_still_exists_no_template['items'] | length > 0
+
+    # DELETE
+    - name: Delete service without template
+      splunk.itsi.itsi_service: &no_template_delete_params
+        name: "{{ test_service_no_template_name }}"
+        state: absent
+      register: delete_no_template_result
+
+    - name: Assert delete succeeded
+      ansible.builtin.assert:
+        that:
+          - delete_no_template_result.changed == true
+
+    # Delete idempotency
+    - name: Run absent again (idempotency)
+      splunk.itsi.itsi_service: *no_template_delete_params
+      register: absent_idempotent_no_template_result
+
+    - name: Assert no changes when already absent
+      ansible.builtin.assert:
+        that:
+          - absent_idempotent_no_template_result.changed == false
+
+    - name: Verify service no longer exists
+      splunk.itsi.itsi_service_info:
+        title: "{{ test_service_no_template_name }}"
+      register: verify_deleted_no_template
+
+    - name: Assert service was deleted
+      ansible.builtin.assert:
+        that:
+          - verify_deleted_no_template['items'] | length == 0
+
+    # Non-existent service handling
+    - name: Query non-existent service
+      splunk.itsi.itsi_service_info:
+        title: "NonExistentService12345"
+      register: info_nonexistent
+
+    - name: Assert non-existent query handled gracefully
+      ansible.builtin.assert:
+        that:
+          - info_nonexistent.changed == false
+          - info_nonexistent['items'] | length == 0
+
+    - name: COMPLETED - All integration tests passed
+      ansible.builtin.debug:
+        msg: "All itsi_service integration tests completed successfully!"
+
+  always:
+    - name: Final cleanup
+      ansible.builtin.include_tasks: _remove_config.yaml

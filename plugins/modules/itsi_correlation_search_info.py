@@ -4,10 +4,6 @@
 # Copyright (c) 2026 Splunk ITSI Ansible Collection maintainers
 """Ansible module for querying Splunk ITSI correlation searches."""
 
-from __future__ import absolute_import, division, print_function
-
-__metaclass__ = type
-
 DOCUMENTATION = r"""
 ---
 module: itsi_correlation_search_info

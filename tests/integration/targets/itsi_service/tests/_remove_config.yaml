@@ -1,0 +1,16 @@
+---
+# Cleanup tasks for itsi_service integration tests
+
+- name: Remove service WITH template (cleanup)
+  splunk.itsi.itsi_service:
+    name: "{{ test_service_with_template_name }}"
+    state: absent
+  register: cleanup_template_result
+  ignore_errors: true
+
+- name: Remove service WITHOUT template (cleanup)
+  splunk.itsi.itsi_service:
+    name: "{{ test_service_no_template_name }}"
+    state: absent
+  register: cleanup_no_template_result
+  ignore_errors: true

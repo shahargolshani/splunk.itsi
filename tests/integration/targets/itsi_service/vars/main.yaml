@@ -1,0 +1,55 @@
+---
+# Service WITH Template
+test_service_with_template_name: "ansible-test-service-with-template"
+
+test_service_with_template:
+  description: "Ansible integration test service with template"
+  enabled: true
+  sec_grp: "default_itsi_security_group"
+  base_service_template_id: "Cloud KPIs - AWS EBS (SAI)" # Default template title
+  service_tags:
+    - prod
+    - ansible-test
+
+# Updated configuration for testing updates on template-based service
+test_service_with_template_updated:
+  description: "Updated description - service with template"
+  enabled: false
+  service_tags:
+    - staging
+    - ansible-test
+    - updated
+
+# Service WITHOUT Template (using entity_rules)
+test_service_no_template_name: "ansible-test-service-no-template"
+
+test_service_no_template:
+  description: "Ansible integration test service without template"
+  enabled: true
+  sec_grp: "default_itsi_security_group"
+  entity_rules:
+    - rule_condition: "AND"
+      rule_items:
+        - field: "host"
+          field_type: "info"
+          rule_type: "matches"
+          value: "web-*"
+  service_tags:
+    - dev
+    - ansible-test
+
+# Updated configuration for testing updates on non-template service
+test_service_no_template_updated:
+  description: "Updated description - service without template"
+  enabled: false
+  entity_rules:
+    - rule_condition: "OR"
+      rule_items:
+        - field: "host"
+          field_type: "info"
+          rule_type: "matches"
+          value: "api-*"
+  service_tags:
+    - staging
+    - ansible-test
+    - updated

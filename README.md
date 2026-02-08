@@ -91,6 +91,8 @@ Name | Description
 [splunk.itsi.itsi_aggregation_policy_info](https://github.com/ansible-collections/splunk.itsi/blob/main/docs/splunk.itsi.itsi_aggregation_policy_info_module.rst)|Get information about Splunk ITSI aggregation policies
 [splunk.itsi.itsi_correlation_search](https://github.com/ansible-collections/splunk.itsi/blob/main/docs/splunk.itsi.itsi_correlation_search_module.rst)|Manage Splunk ITSI correlation searches
 [splunk.itsi.itsi_correlation_search_info](https://github.com/ansible-collections/splunk.itsi/blob/main/docs/splunk.itsi.itsi_correlation_search_info_module.rst)|Query Splunk ITSI correlation searches
+[splunk.itsi.itsi_service](https://github.com/ansible-collections/splunk.itsi/blob/main/docs/splunk.itsi.itsi_service_module.rst)|Manage Splunk ITSI Service objects via itoa_interface
+[splunk.itsi.itsi_service_info](https://github.com/ansible-collections/splunk.itsi/blob/main/docs/splunk.itsi.itsi_service_info_module.rst)|Gather facts about Splunk ITSI Service objects via itoa_interface
 
 <!--end collection content-->
 
