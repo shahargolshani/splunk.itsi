@@ -1,0 +1,7 @@
+---
+minor_changes:
+  - Add new module ``itsi_aggregation_policy`` for managing ITSI aggregation policies (create, update, delete).
+  - Add new module ``itsi_aggregation_policy_info`` for querying ITSI aggregation policies by ID, title, or listing all.
+  - Add integration tests for itsi_aggregation_policy and itsi_aggregation_policy_info modules.
+  - Add unit tests for itsi_aggregation_policy and itsi_aggregation_policy_info modules.
+  - Refactor shared utility functions into module_utils/itsi_utils.py for code reuse.
