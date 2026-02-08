@@ -1,0 +1,6 @@
+---
+minor_changes:
+  - Add new ``ItsiRequest`` class in ``module_utils/itsi_request.py`` as the unified HTTP abstraction layer for all ITSI modules.
+  - Refactor all ITSI modules to use ``ItsiRequest`` instead of the previous standalone functions
+  - Add comprehensive unit tests for ``ItsiRequest`` in ``tests/unit/test_itsi_request.py``
+  - Remove deprecated ``_send``, ``_send_request``, and ``send_itsi_request`` functions

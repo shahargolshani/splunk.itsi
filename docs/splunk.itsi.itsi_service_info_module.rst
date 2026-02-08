@@ -18,9 +18,8 @@ Version added: 1.0.0
 Synopsis
 --------
 - Read service documents from the Splunk ITSI REST API (itoa_interface).
-You can fetch by key, fetch by exact title, or list with server-side filters.
-Uses the splunk.itsi.itsi_api_client httpapi plugin for transport and auth.
-
+- You can fetch by key, fetch by exact title, or list with server-side filters.
+- Uses the splunk.itsi.itsi_api_client httpapi plugin for transport and auth.
 
 
 

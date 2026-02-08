@@ -25,6 +25,7 @@ class AnsibleFailJson(SystemExit):
 
 
 # Import module functions for testing
+from ansible_collections.splunk.itsi.plugins.module_utils.itsi_request import ItsiRequest
 from ansible_collections.splunk.itsi.plugins.modules.itsi_service import (
     _compute_patch,
     _create,
@@ -37,7 +38,6 @@ from ansible_collections.splunk.itsi.plugins.modules.itsi_service import (
     _int_bool,
     _looks_like_uuid,
     _resolve_base_service_template_id,
-    _send,
     _update,
     main,
 )
@@ -453,149 +453,6 @@ class TestComputePatch:
         assert len(changed) == 3
 
 
-class TestSend:
-    """Tests for _send helper function."""
-
-    def test_send_get_success(self):
-        """Test successful GET request."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": json.dumps({"_key": "test"}),
-        }
-
-        status, body = _send(mock_conn, "GET", "/test/path")
-
-        assert status == 200
-        assert body["_key"] == "test"
-
-    def test_send_post_with_dict_payload(self):
-        """Test POST request with dict payload."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": json.dumps({"_key": "new"}),
-        }
-
-        _send(mock_conn, "POST", "/test/path", payload={"title": "test"})
-
-        call_args = mock_conn.send_request.call_args
-        # _send calls: conn.send_request(path, method=method, body=body)
-        sent_body = call_args.kwargs["body"]
-        assert json.loads(sent_body) == {"title": "test"}
-
-    def test_send_post_with_list_payload(self):
-        """Test POST request with list payload."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": "[]",
-        }
-
-        _send(mock_conn, "POST", "/test/path", payload=[{"a": 1}])
-
-        call_args = mock_conn.send_request.call_args
-        # _send calls: conn.send_request(path, method=method, body=body)
-        sent_body = call_args.kwargs["body"]
-        assert json.loads(sent_body) == [{"a": 1}]
-
-    def test_send_with_params(self):
-        """Test request with query parameters."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": "{}",
-        }
-
-        _send(mock_conn, "GET", "/test/path", params={"filter": '{"title":"svc"}'})
-
-        call_args = mock_conn.send_request.call_args
-        assert "filter=" in call_args[0][0]
-
-    def test_send_params_exclude_none(self):
-        """Test params exclude None values."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": "{}",
-        }
-
-        _send(mock_conn, "GET", "/test/path", params={"a": "value", "b": None, "c": ""})
-
-        call_args = mock_conn.send_request.call_args
-        assert "a=value" in call_args[0][0]
-        assert "b=" not in call_args[0][0]
-        assert "c=" not in call_args[0][0]
-
-    def test_send_params_keep_zero_false(self):
-        """Test params keep 0 and False values."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": "{}",
-        }
-
-        _send(mock_conn, "GET", "/test/path", params={"count": 0, "enabled": False})
-
-        call_args = mock_conn.send_request.call_args
-        assert "count=0" in call_args[0][0]
-        assert "enabled=False" in call_args[0][0]
-
-    def test_send_empty_body(self):
-        """Test request with empty response body."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 204,
-            "body": "",
-        }
-
-        status, body = _send(mock_conn, "DELETE", "/test/path")
-
-        assert status == 204
-        assert body == {}
-
-    def test_send_non_json_body(self):
-        """Test request with non-JSON response body."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": "plain text response",
-        }
-
-        status, body = _send(mock_conn, "GET", "/test/path")
-
-        assert status == 200
-        assert body["raw_response"] == "plain text response"
-
-    def test_send_method_uppercase(self):
-        """Test method is converted to uppercase."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": "{}",
-        }
-
-        _send(mock_conn, "get", "/test/path")
-
-        call_args = mock_conn.send_request.call_args
-        # _send calls: conn.send_request(path, method=method, body=body)
-        assert call_args.kwargs["method"] == "GET"
-
-    def test_send_append_params_to_existing_query(self):
-        """Test params appended to existing query string."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": "{}",
-        }
-
-        _send(mock_conn, "GET", "/test/path?existing=value", params={"new": "param"})
-
-        call_args = mock_conn.send_request.call_args
-        assert "existing=value" in call_args[0][0]
-        assert "&new=param" in call_args[0][0]
-
-
 class TestGetByKey:
     """Tests for _get_by_key helper function."""
 
@@ -607,7 +464,7 @@ class TestGetByKey:
             "body": json.dumps(SAMPLE_SERVICE),
         }
 
-        status, body = _get_by_key(mock_conn, "a2961217-9728-4e9f-b67b-15bf4a40ad7c")
+        status, body = _get_by_key(ItsiRequest(mock_conn), "a2961217-9728-4e9f-b67b-15bf4a40ad7c")
 
         assert status == 200
         assert body["title"] == "api-gateway"
@@ -620,7 +477,7 @@ class TestGetByKey:
             "body": json.dumps({"error": "Not found"}),
         }
 
-        status, body = _get_by_key(mock_conn, "nonexistent")
+        status, body = _get_by_key(ItsiRequest(mock_conn), "nonexistent")
 
         assert status == 404
 
@@ -632,7 +489,7 @@ class TestGetByKey:
             "body": json.dumps({"_key": "test", "title": "svc"}),
         }
 
-        _get_by_key(mock_conn, "test", fields="_key,title")
+        _get_by_key(ItsiRequest(mock_conn), "test", fields="_key,title")
 
         call_args = mock_conn.send_request.call_args
         assert "fields=_key%2Ctitle" in call_args[0][0]
@@ -645,7 +502,7 @@ class TestGetByKey:
             "body": json.dumps({"_key": "test"}),
         }
 
-        _get_by_key(mock_conn, "test", fields=["_key", "title"])
+        _get_by_key(ItsiRequest(mock_conn), "test", fields=["_key", "title"])
 
         call_args = mock_conn.send_request.call_args
         assert "fields=_key%2Ctitle" in call_args[0][0]
@@ -662,7 +519,7 @@ class TestFindByTitle:
             "body": json.dumps([SAMPLE_SERVICE]),
         }
 
-        status, doc, err = _find_by_title(mock_conn, "api-gateway")
+        status, doc, err = _find_by_title(ItsiRequest(mock_conn), "api-gateway")
 
         assert status == 200
         assert doc["title"] == "api-gateway"
@@ -676,7 +533,7 @@ class TestFindByTitle:
             "body": json.dumps([]),
         }
 
-        status, doc, err = _find_by_title(mock_conn, "nonexistent")
+        status, doc, err = _find_by_title(ItsiRequest(mock_conn), "nonexistent")
 
         assert status == 200
         assert doc is None
@@ -696,7 +553,7 @@ class TestFindByTitle:
             ),
         }
 
-        status, doc, err = _find_by_title(mock_conn, "api-gateway")
+        status, doc, err = _find_by_title(ItsiRequest(mock_conn), "api-gateway")
 
         assert doc["_key"] == "1"
 
@@ -708,7 +565,7 @@ class TestFindByTitle:
             "body": json.dumps({"error": "unexpected"}),
         }
 
-        status, doc, err = _find_by_title(mock_conn, "test")
+        status, doc, err = _find_by_title(ItsiRequest(mock_conn), "test")
 
         assert doc is None
 
@@ -724,12 +581,12 @@ class TestCreate:
             "body": json.dumps({"_key": "new-uuid"}),
         }
 
-        status, body = _create(mock_conn, {"title": "new-service"})
+        status, body = _create(ItsiRequest(mock_conn), {"title": "new-service"})
 
         assert status == 200
         assert body["_key"] == "new-uuid"
         call_args = mock_conn.send_request.call_args
-        # _send calls: conn.send_request(path, method=method, body=body)
+        # Module calls: conn.send_request(path, method=method, body=body)
         assert call_args.kwargs["method"] == "POST"
 
     def test_create_with_full_payload(self):
@@ -746,10 +603,10 @@ class TestCreate:
             "description": "Full description",
             "service_tags": {"tags": ["tag1"]},
         }
-        _create(mock_conn, payload)
+        _create(ItsiRequest(mock_conn), payload)
 
         call_args = mock_conn.send_request.call_args
-        # _send calls: conn.send_request(path, method=method, body=body)
+        # Module calls: conn.send_request(path, method=method, body=body)
         sent_payload = json.loads(call_args.kwargs["body"])
         assert sent_payload["title"] == "full-service"
         assert sent_payload["enabled"] == 1
@@ -766,10 +623,10 @@ class TestUpdate:
             "body": json.dumps({"_key": "test"}),
         }
 
-        _update(mock_conn, "test-key", {"enabled": 0})
+        _update(ItsiRequest(mock_conn), "test-key", {"enabled": 0})
 
         call_args = mock_conn.send_request.call_args
-        # _send calls: conn.send_request(path, method=method, body=body)
+        # Module calls: conn.send_request(path, method=method, body=body)
         sent_payload = json.loads(call_args.kwargs["body"])
         assert sent_payload["_key"] == "test-key"
         assert sent_payload["enabled"] == 0
@@ -784,10 +641,10 @@ class TestUpdate:
 
         current = {"title": "svc", "enabled": 1, "description": "old"}
         patch = {"description": "new"}
-        _update(mock_conn, "test-key", patch, current_doc=current)
+        _update(ItsiRequest(mock_conn), "test-key", patch, current_doc=current)
 
         call_args = mock_conn.send_request.call_args
-        # _send calls: conn.send_request(path, method=method, body=body)
+        # Module calls: conn.send_request(path, method=method, body=body)
         sent_payload = json.loads(call_args.kwargs["body"])
         assert sent_payload["title"] == "svc"
         assert sent_payload["enabled"] == 1
@@ -809,10 +666,10 @@ class TestUpdate:
             "kpis": [{"id": "kpi1"}],
             "permissions": {"read": "*"},
         }
-        _update(mock_conn, "key", {"title": "svc"}, current_doc=current)
+        _update(ItsiRequest(mock_conn), "key", {"title": "svc"}, current_doc=current)
 
         call_args = mock_conn.send_request.call_args
-        # _send calls: conn.send_request(path, method=method, body=body)
+        # Module calls: conn.send_request(path, method=method, body=body)
         sent_payload = json.loads(call_args.kwargs["body"])
         assert "_user" not in sent_payload
         assert "_version" not in sent_payload
@@ -831,11 +688,11 @@ class TestDelete:
             "body": "",
         }
 
-        status, body = _delete(mock_conn, "test-key")
+        status, body = _delete(ItsiRequest(mock_conn), "test-key")
 
         assert status == 200
         call_args = mock_conn.send_request.call_args
-        # _send calls: conn.send_request(path, method=method, body=body)
+        # Module calls: conn.send_request(path, method=method, body=body)
         assert call_args.kwargs["method"] == "DELETE"
         assert "test-key" in call_args[0][0]  # path is positional
 
@@ -850,7 +707,7 @@ class TestResolveBaseServiceTemplateId:
         result = {}
 
         resolved = _resolve_base_service_template_id(
-            conn=mock_conn,
+            client=ItsiRequest(mock_conn),
             template_ref="a2961217-9728-4e9f-b67b-15bf4a40ad7c",
             module=mock_module,
             result=result,
@@ -870,7 +727,7 @@ class TestResolveBaseServiceTemplateId:
         result = {}
 
         resolved = _resolve_base_service_template_id(
-            conn=mock_conn,
+            client=ItsiRequest(mock_conn),
             template_ref="My Service Template",
             module=mock_module,
             result=result,
@@ -892,7 +749,7 @@ class TestResolveBaseServiceTemplateId:
 
         with pytest.raises(AnsibleFailJson):
             _resolve_base_service_template_id(
-                conn=mock_conn,
+                client=ItsiRequest(mock_conn),
                 template_ref="Nonexistent Template",
                 module=mock_module,
                 result=result,
@@ -920,7 +777,7 @@ class TestResolveBaseServiceTemplateId:
 
         with pytest.raises(AnsibleFailJson):
             _resolve_base_service_template_id(
-                conn=mock_conn,
+                client=ItsiRequest(mock_conn),
                 template_ref="Duplicate Template",
                 module=mock_module,
                 result=result,
@@ -944,7 +801,7 @@ class TestDiscoverCurrent:
         result = {}
 
         doc = _discover_current(
-            conn=mock_conn,
+            client=ItsiRequest(mock_conn),
             key="a2961217-9728-4e9f-b67b-15bf4a40ad7c",
             name=None,
             module=mock_module,
@@ -965,7 +822,7 @@ class TestDiscoverCurrent:
         result = {}
 
         doc = _discover_current(
-            conn=mock_conn,
+            client=ItsiRequest(mock_conn),
             key="nonexistent",
             name=None,
             module=mock_module,
@@ -987,7 +844,7 @@ class TestDiscoverCurrent:
         result = {}
 
         doc = _discover_current(
-            conn=mock_conn,
+            client=ItsiRequest(mock_conn),
             key=None,
             name="api-gateway",
             module=mock_module,
@@ -1009,7 +866,7 @@ class TestDiscoverCurrent:
         result = {}
 
         doc = _discover_current(
-            conn=mock_conn,
+            client=ItsiRequest(mock_conn),
             key=None,
             name="nonexistent",
             module=mock_module,
@@ -1650,7 +1507,7 @@ class TestMain:
             main()
 
         # Verify extra fields were in the create payload
-        # _send calls: conn.send_request(path, method=method, body=body)
+        # Module calls: conn.send_request(path, method=method, body=body)
         create_call = mock_conn.send_request.call_args_list[1]
         payload = json.loads(create_call.kwargs["body"])
         assert payload["custom_field"] == "custom_value"

@@ -24,11 +24,11 @@ class AnsibleFailJson(SystemExit):
 
 
 # Import shared utilities from module_utils
+from ansible_collections.splunk.itsi.plugins.module_utils.itsi_request import ItsiRequest
 from ansible_collections.splunk.itsi.plugins.module_utils.itsi_utils import (
     flatten_policy_object,
     get_aggregation_policy_by_id,
     normalize_policy_list,
-    send_itsi_request,
 )
 
 # Import module functions for testing
@@ -318,195 +318,6 @@ class TestDiffCanonical:
         assert "rules" in result
 
 
-class TestSendItsiRequest:
-    """Tests for send_itsi_request helper function."""
-
-    def test_send_request_success(self):
-        """Test successful request."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": json.dumps({"_key": "test"}),
-            "headers": {},
-        }
-
-        status, data = send_itsi_request(mock_conn, "GET", "/test/path")
-
-        assert status == 200
-        assert data["_key"] == "test"
-
-    def test_send_request_with_params(self):
-        """Test request with query parameters."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": "{}",
-            "headers": {},
-        }
-
-        send_itsi_request(mock_conn, "GET", "/test", params={"output_mode": "json", "limit": 10})
-
-        call_args = mock_conn.send_request.call_args
-        assert "output_mode=json" in call_args[0][0]
-        assert "limit=10" in call_args[0][0]
-
-    def test_send_request_filters_none_params(self):
-        """Test request filters None params."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": "{}",
-            "headers": {},
-        }
-
-        send_itsi_request(mock_conn, "GET", "/test", params={"keep": "value", "remove": None, "empty": ""})
-
-        call_args = mock_conn.send_request.call_args
-        assert "keep=value" in call_args[0][0]
-        assert "remove" not in call_args[0][0]
-        assert "empty" not in call_args[0][0]
-
-    def test_send_request_with_dict_payload(self):
-        """Test request with dict payload."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": "{}",
-            "headers": {},
-        }
-
-        send_itsi_request(mock_conn, "POST", "/test", payload={"key": "value"})
-
-        call_args = mock_conn.send_request.call_args
-        assert json.loads(call_args[1]["body"]) == {"key": "value"}
-
-    def test_send_request_with_list_payload(self):
-        """Test request with list payload."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": "{}",
-            "headers": {},
-        }
-
-        send_itsi_request(mock_conn, "POST", "/test", payload=[{"a": 1}])
-
-        call_args = mock_conn.send_request.call_args
-        assert json.loads(call_args[1]["body"]) == [{"a": 1}]
-
-    def test_send_request_with_string_payload(self):
-        """Test request with string payload."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": "{}",
-            "headers": {},
-        }
-
-        send_itsi_request(mock_conn, "POST", "/test", payload="raw string")
-
-        call_args = mock_conn.send_request.call_args
-        assert call_args[1]["body"] == "raw string"
-
-    def test_send_request_with_none_payload(self):
-        """Test request with None payload."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": "{}",
-            "headers": {},
-        }
-
-        send_itsi_request(mock_conn, "GET", "/test", payload=None)
-
-        call_args = mock_conn.send_request.call_args
-        assert call_args[1]["body"] == ""
-
-    def test_send_request_empty_body(self):
-        """Test request with empty body response."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 204,
-            "body": "",
-            "headers": {},
-        }
-
-        status, data = send_itsi_request(mock_conn, "DELETE", "/test")
-
-        assert status == 204
-        assert "_response_headers" in data
-
-    def test_send_request_non_json_response(self):
-        """Test request with non-JSON response."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": "plain text",
-            "headers": {},
-        }
-
-        status, data = send_itsi_request(mock_conn, "GET", "/test")
-
-        assert data["raw_response"] == "plain text"
-
-    def test_send_request_invalid_response_format(self):
-        """Test request with invalid response format."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = "invalid"
-
-        status, data = send_itsi_request(mock_conn, "GET", "/test")
-
-        assert status == 500
-        assert "error" in data
-
-    def test_send_request_missing_status(self):
-        """Test request with missing status."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {"body": "{}"}
-
-        status, data = send_itsi_request(mock_conn, "GET", "/test")
-
-        assert status == 500
-        assert "error" in data
-
-    def test_send_request_exception(self):
-        """Test request with exception."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.side_effect = Exception("Network error")
-
-        status, data = send_itsi_request(mock_conn, "GET", "/test")
-
-        assert status == 500
-        assert "Network error" in data["error"]
-
-    def test_send_request_includes_headers(self):
-        """Test request includes response headers."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": '{"key": "value"}',
-            "headers": {"X-Custom": "header"},
-        }
-
-        status, data = send_itsi_request(mock_conn, "GET", "/test")
-
-        assert data["_response_headers"]["X-Custom"] == "header"
-
-    def test_send_request_method_uppercase(self):
-        """Test request method is converted to uppercase."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": "{}",
-            "headers": {},
-        }
-
-        send_itsi_request(mock_conn, "get", "/test")
-
-        call_args = mock_conn.send_request.call_args
-        assert call_args[1]["method"] == "GET"
-
-
 class TestGetAggregationPolicyById:
     """Tests for get_aggregation_policy_by_id function."""
 
@@ -519,7 +330,7 @@ class TestGetAggregationPolicyById:
             "headers": {},
         }
 
-        status, data = get_aggregation_policy_by_id(mock_conn, "test_policy_id")
+        status, data = get_aggregation_policy_by_id(ItsiRequest(mock_conn), "test_policy_id")
 
         assert status == 200
         assert data["title"] == "Test Policy"
@@ -533,7 +344,7 @@ class TestGetAggregationPolicyById:
             "headers": {},
         }
 
-        get_aggregation_policy_by_id(mock_conn, "test_policy_id", fields="title,disabled")
+        get_aggregation_policy_by_id(ItsiRequest(mock_conn), "test_policy_id", fields="title,disabled")
 
         call_args = mock_conn.send_request.call_args
         assert "fields=title%2Cdisabled" in call_args[0][0]
@@ -547,7 +358,7 @@ class TestGetAggregationPolicyById:
             "headers": {},
         }
 
-        status, data = get_aggregation_policy_by_id(mock_conn, "nonexistent")
+        status, data = get_aggregation_policy_by_id(ItsiRequest(mock_conn), "nonexistent")
 
         assert status == 404
 
@@ -560,7 +371,7 @@ class TestGetAggregationPolicyById:
             "headers": {},
         }
 
-        get_aggregation_policy_by_id(mock_conn, "policy with spaces")
+        get_aggregation_policy_by_id(ItsiRequest(mock_conn), "policy with spaces")
 
         call_args = mock_conn.send_request.call_args
         assert "policy+with+spaces" in call_args[0][0]
@@ -579,7 +390,7 @@ class TestCreateAggregationPolicy:
         }
 
         policy_data = {"title": "New Policy"}
-        status, data = create_aggregation_policy(mock_conn, policy_data)
+        status, data = create_aggregation_policy(ItsiRequest(mock_conn), policy_data)
 
         assert status == 200
         call_args = mock_conn.send_request.call_args
@@ -594,7 +405,7 @@ class TestCreateAggregationPolicy:
             "headers": {},
         }
 
-        create_aggregation_policy(mock_conn, {"title": "Test"})
+        create_aggregation_policy(ItsiRequest(mock_conn), {"title": "Test"})
 
         call_args = mock_conn.send_request.call_args
         payload = json.loads(call_args[1]["body"])
@@ -619,7 +430,7 @@ class TestCreateAggregationPolicy:
             "priority": 8,
             "filter_criteria": {"condition": "OR", "items": []},
         }
-        create_aggregation_policy(mock_conn, policy_data)
+        create_aggregation_policy(ItsiRequest(mock_conn), policy_data)
 
         call_args = mock_conn.send_request.call_args
         payload = json.loads(call_args[1]["body"])
@@ -640,7 +451,7 @@ class TestUpdateAggregationPolicy:
         ]
 
         update_data = {"disabled": 1}
-        status, data = update_aggregation_policy(mock_conn, "test_policy_id", update_data)
+        status, data = update_aggregation_policy(ItsiRequest(mock_conn), "test_policy_id", update_data)
 
         assert status == 200
 
@@ -652,7 +463,7 @@ class TestUpdateAggregationPolicy:
             {"status": 200, "body": "{}", "headers": {}},
         ]
 
-        update_aggregation_policy(mock_conn, "test_policy_id", {"disabled": 0})
+        update_aggregation_policy(ItsiRequest(mock_conn), "test_policy_id", {"disabled": 0})
 
         call_args = mock_conn.send_request.call_args_list[1]
         assert "is_partial_data=1" in call_args[0][0]
@@ -665,7 +476,7 @@ class TestUpdateAggregationPolicy:
             {"status": 200, "body": "{}", "headers": {}},
         ]
 
-        update_aggregation_policy(mock_conn, "test_policy_id", {"description": "New desc"})
+        update_aggregation_policy(ItsiRequest(mock_conn), "test_policy_id", {"description": "New desc"})
 
         call_args = mock_conn.send_request.call_args_list[1]
         payload = json.loads(call_args[1]["body"])
@@ -681,7 +492,7 @@ class TestUpdateAggregationPolicy:
             "headers": {},
         }
 
-        status, data = update_aggregation_policy(mock_conn, "nonexistent", {"disabled": 1})
+        status, data = update_aggregation_policy(ItsiRequest(mock_conn), "nonexistent", {"disabled": 1})
 
         assert status == 404
 
@@ -698,7 +509,7 @@ class TestDeleteAggregationPolicy:
             "headers": {},
         }
 
-        status, data = delete_aggregation_policy(mock_conn, "test_policy_id")
+        status, data = delete_aggregation_policy(ItsiRequest(mock_conn), "test_policy_id")
 
         assert status == 204
         call_args = mock_conn.send_request.call_args
@@ -713,7 +524,7 @@ class TestDeleteAggregationPolicy:
             "headers": {},
         }
 
-        delete_aggregation_policy(mock_conn, "policy with spaces")
+        delete_aggregation_policy(ItsiRequest(mock_conn), "policy with spaces")
 
         call_args = mock_conn.send_request.call_args
         assert "policy+with+spaces" in call_args[0][0]
@@ -733,7 +544,7 @@ class TestEnsurePresent:
 
         result = {}
         desired_data = {"title": "New Policy"}
-        ensure_present(mock_conn, None, desired_data, result)
+        ensure_present(ItsiRequest(mock_conn), None, desired_data, result)
 
         assert result["operation"] == "create"
         assert result["changed"] is True
@@ -754,7 +565,7 @@ class TestEnsurePresent:
             "disabled": False,
             "group_severity": "medium",
         }
-        ensure_present(mock_conn, "test_policy_id", desired_data, result)
+        ensure_present(ItsiRequest(mock_conn), "test_policy_id", desired_data, result)
 
         assert result["operation"] == "no_change"
         assert result["changed"] is False
@@ -770,7 +581,7 @@ class TestEnsurePresent:
 
         result = {}
         desired_data = {"description": "New description"}
-        ensure_present(mock_conn, "test_policy_id", desired_data, result)
+        ensure_present(ItsiRequest(mock_conn), "test_policy_id", desired_data, result)
 
         assert result["operation"] == "update"
         assert result["changed"] is True
@@ -786,7 +597,7 @@ class TestEnsurePresent:
         }
 
         result = {}
-        ensure_present(mock_conn, "nonexistent_id", {"description": "test"}, result)
+        ensure_present(ItsiRequest(mock_conn), "nonexistent_id", {"description": "test"}, result)
 
         assert result["operation"] == "error"
         assert result["status"] == 404
@@ -802,7 +613,7 @@ class TestEnsurePresent:
         }
 
         result = {}
-        ensure_present(mock_conn, "test_policy_id", {"title": "Test"}, result)
+        ensure_present(ItsiRequest(mock_conn), "test_policy_id", {"title": "Test"}, result)
 
         assert result["operation"] == "error"
         assert result["status"] == 500
