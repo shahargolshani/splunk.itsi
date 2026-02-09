@@ -138,56 +138,24 @@ import json
 
 from ansible.module_utils.basic import AnsibleModule
 from ansible.module_utils.connection import Connection
-from ansible.module_utils.six.moves.urllib.parse import quote, quote_plus, urlencode
+from ansible.module_utils.six.moves.urllib.parse import quote, quote_plus
+from ansible_collections.splunk.itsi.plugins.module_utils.itsi_request import ItsiRequest
 from ansible_collections.splunk.itsi.plugins.module_utils.itsi_utils import (
     flatten_search_object,
-    handle_request_exception,
     normalize_to_list,
-    process_api_response,
 )
 
 # EMI endpoint for all correlation search operations
 BASE_EVENT_MGMT = "servicesNS/nobody/SA-ITOA/event_management_interface/correlation_search"
 
 
-def _send_request(conn, method, path, params=None):
-    """
-    Send request via itsi_api_client with enhanced response format.
-
-    Args:
-        conn: Connection object
-        method: HTTP method (GET)
-        path: API path
-        params: Query parameters dict
-
-    Returns:
-        tuple: (status_code, response_dict)
-    """
-    method = method.upper()
-
-    # Build query string from params
-    if params:
-        query_params = {k: v for k, v in params.items() if v is not None and v != ""}
-        if query_params:
-            sep = "&" if "?" in path else "?"
-            path = f"{path}{sep}{urlencode(query_params, doseq=True)}"
-
-    try:
-        # Use response format from itsi_api_client
-        result = conn.send_request(path, method=method, body="", headers={})
-        return process_api_response(result)
-
-    except Exception as e:
-        return handle_request_exception(e)
-
-
-def get_correlation_search(conn, search_identifier, fields=None):
+def get_correlation_search(client, search_identifier, fields=None):
     """Get correlation search by ID using direct path lookup."""
     path = f"{BASE_EVENT_MGMT}/{quote_plus(search_identifier)}"
     params = {"output_mode": "json"}
     if fields:
         params["fields"] = ",".join(fields) if isinstance(fields, (list, tuple)) else fields
-    status, data = _send_request(conn, "GET", path, params=params)
+    status, data = client.get(path, params=params)
     if status == 200 and isinstance(data, dict):
         flat = flatten_search_object(data)
         if isinstance(data, dict) and "_response_headers" in data:
@@ -196,14 +164,14 @@ def get_correlation_search(conn, search_identifier, fields=None):
     return status, data
 
 
-def get_correlation_search_by_name(conn, name, fields=None):
+def get_correlation_search_by_name(client, name, fields=None):
     """
     Query correlation search by name using direct path lookup.
 
     Uses quote to properly encode spaces as %20 in the URL path.
 
     Args:
-        conn: Connection object
+        client: ItsiRequest instance
         name: The correlation search name (can contain spaces)
         fields: Optional comma-separated field list
 
@@ -217,7 +185,7 @@ def get_correlation_search_by_name(conn, name, fields=None):
     if fields:
         params["fields"] = ",".join(fields) if isinstance(fields, (list, tuple)) else fields
 
-    status, data = _send_request(conn, "GET", path, params=params)
+    status, data = client.get(path, params=params)
 
     if status == 200 and isinstance(data, dict):
         flat = flatten_search_object(data)
@@ -228,12 +196,12 @@ def get_correlation_search_by_name(conn, name, fields=None):
     return status, data
 
 
-def list_correlation_searches(conn, fields=None, filter_data=None, count=None):
+def list_correlation_searches(client, fields=None, filter_data=None, count=None):
     """
     List correlation searches with optional filtering.
 
     Args:
-        conn: Connection object
+        client: ItsiRequest instance
         fields: Optional comma-separated field list
         filter_data: Optional MongoDB-style filter JSON string
         count: Optional count for number of results
@@ -250,7 +218,7 @@ def list_correlation_searches(conn, fields=None, filter_data=None, count=None):
     if count:
         params["count"] = count
 
-    status, data = _send_request(conn, "GET", BASE_EVENT_MGMT, params=params)
+    status, data = client.get(BASE_EVENT_MGMT, params=params)
 
     if status == 200:
         entries = normalize_to_list(data)
@@ -274,28 +242,28 @@ def _to_body(data) -> str:
     return json.dumps(data) if isinstance(data, (dict, list)) else str(data)
 
 
-def _query_single_search(conn, params: dict, result: dict):
+def _query_single_search(client, params: dict, result: dict):
     """Query a specific correlation search by ID or name."""
     correlation_search_id = params.get("correlation_search_id")
     name = params.get("name")
     fields = params.get("fields")
 
     if correlation_search_id:
-        status, data = get_correlation_search(conn, correlation_search_id, fields)
+        status, data = get_correlation_search(client, correlation_search_id, fields)
     else:
-        status, data = get_correlation_search_by_name(conn, name, fields)
+        status, data = get_correlation_search_by_name(client, name, fields)
 
     result.update({"status": status, "headers": _get_headers(data), "body": _to_body(data)})
     result["correlation_search"] = data if status == 200 else None
 
 
-def _query_all_searches(conn, params: dict, result: dict):
+def _query_all_searches(client, params: dict, result: dict):
     """List all correlation searches."""
     fields = params.get("fields")
     filter_data = params.get("filter_data")
     count = params.get("count")
 
-    status, data = list_correlation_searches(conn, fields, filter_data, count)
+    status, data = list_correlation_searches(client, fields, filter_data, count)
     if not isinstance(data, dict):
         data = {"results": data, "_response_headers": {}}
 
@@ -325,14 +293,14 @@ def main():
         module.fail_json(msg="Use ansible_connection=httpapi and ansible_network_os=splunk.itsi.itsi_api_client")
 
     try:
-        conn = Connection(module._socket_path)
+        client = ItsiRequest(Connection(module._socket_path))
         result = {"changed": False, "status": 0, "headers": {}, "body": ""}
 
         search_identifier = module.params.get("correlation_search_id") or module.params.get("name")
         if search_identifier:
-            _query_single_search(conn, module.params, result)
+            _query_single_search(client, module.params, result)
         else:
-            _query_all_searches(conn, module.params, result)
+            _query_all_searches(client, module.params, result)
 
         module.exit_json(**result)
 

@@ -143,6 +143,7 @@ from ansible.module_utils.basic import AnsibleModule
 from ansible.module_utils.connection import Connection
 
 # Import shared utilities
+from ansible_collections.splunk.itsi.plugins.module_utils.itsi_request import ItsiRequest
 from ansible_collections.splunk.itsi.plugins.module_utils.itsi_utils import (
     get_aggregation_policies_by_title,
     get_aggregation_policy_by_id,
@@ -157,9 +158,9 @@ def _normalize_response_data(data):
     return {"aggregation_policies": [], "_response_headers": {}}
 
 
-def _query_by_policy_id(conn, policy_id, fields):
+def _query_by_policy_id(client, policy_id, fields):
     """Query a specific aggregation policy by ID."""
-    status, data = get_aggregation_policy_by_id(conn, policy_id, fields)
+    status, data = get_aggregation_policy_by_id(client, policy_id, fields)
     headers = data.get("_response_headers", {}) if isinstance(data, dict) else {}
 
     result = {"status": status, "headers": headers}
@@ -167,9 +168,9 @@ def _query_by_policy_id(conn, policy_id, fields):
     return result
 
 
-def _query_by_title(conn, title, fields):
+def _query_by_title(client, title, fields):
     """Query aggregation policies by title (may return multiple)."""
-    status, data = get_aggregation_policies_by_title(conn, title, fields)
+    status, data = get_aggregation_policies_by_title(client, title, fields)
     data = _normalize_response_data(data)
     policies = data.get("aggregation_policies", [])
 
@@ -184,9 +185,9 @@ def _query_by_title(conn, title, fields):
     return result
 
 
-def _list_all_policies(conn, fields, filter_data, limit):
+def _list_all_policies(client, fields, filter_data, limit):
     """List all aggregation policies."""
-    status, data = list_aggregation_policies(conn, fields, filter_data, limit)
+    status, data = list_aggregation_policies(client, fields, filter_data, limit)
     data = _normalize_response_data(data)
 
     return {
@@ -215,20 +216,20 @@ def main():
     )
 
     try:
-        conn = Connection(module._socket_path)
+        client = ItsiRequest(Connection(module._socket_path))
         policy_id = module.params.get("policy_id")
         title = module.params.get("title")
         fields = module.params.get("fields")
 
         # Route to appropriate query function
         if policy_id:
-            result = _query_by_policy_id(conn, policy_id, fields)
+            result = _query_by_policy_id(client, policy_id, fields)
         elif title:
-            result = _query_by_title(conn, title, fields)
+            result = _query_by_title(client, title, fields)
         else:
             filter_data = module.params.get("filter_data")
             limit = module.params.get("limit")
-            result = _list_all_policies(conn, fields, filter_data, limit)
+            result = _list_all_policies(client, fields, filter_data, limit)
 
         result["changed"] = False
         module.exit_json(**result)

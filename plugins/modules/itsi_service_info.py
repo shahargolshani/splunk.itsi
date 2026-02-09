@@ -10,10 +10,10 @@ DOCUMENTATION = r"""
 module: itsi_service_info
 short_description: Gather facts about Splunk ITSI Service objects via itoa_interface
 version_added: "1.0.0"
-description: |
-  Read service documents from the Splunk ITSI REST API (itoa_interface).
-  You can fetch by key, fetch by exact title, or list with server-side filters.
-  Uses the splunk.itsi.itsi_api_client httpapi plugin for transport and auth.
+description:
+  - Read service documents from the Splunk ITSI REST API (itoa_interface).
+  - You can fetch by key, fetch by exact title, or list with server-side filters.
+  - Uses the splunk.itsi.itsi_api_client httpapi plugin for transport and auth.
 author:
   - Ansible Ecosystem Engineering team (@ansible)
 notes:
@@ -115,40 +115,14 @@ changed:
 """
 
 import json
-from typing import Any, Dict, List, Optional, Tuple
-from urllib.parse import quote_plus, urlencode
+from typing import Any, Dict, List, Optional
+from urllib.parse import quote_plus
 
 from ansible.module_utils.basic import AnsibleModule
 from ansible.module_utils.connection import Connection
+from ansible_collections.splunk.itsi.plugins.module_utils.itsi_request import ItsiRequest
 
 BASE = "servicesNS/nobody/SA-ITOA/itoa_interface/service"
-
-
-def _send(
-    conn: Connection,
-    method: str,
-    path: str,
-    params: Optional[Dict[str, Any]] = None,
-) -> Tuple[int, Any]:
-    """Send request via itsi_api_client."""
-    method = method.upper()
-    if params:
-        # Drop Nones/empties but keep 0/False
-        query_params = {key: value for key, value in params.items() if value is not None and value != ""}
-        sep = "&" if "?" in path else "?"
-        path = f"{path}{sep}{urlencode(query_params, doseq=True)}"
-
-    # Use response format from itsi_api_client
-    response = conn.send_request(path, "", method=method)
-    status = int(response.get("status", 0)) if isinstance(response, dict) else 0
-    body_text = response.get("body") if isinstance(response, dict) else ""
-
-    try:
-        body = json.loads(body_text) if body_text else {}
-    except Exception:
-        body = {"raw_response": body_text}
-
-    return status, body
 
 
 def _build_filter(module_params: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -197,19 +171,19 @@ def _extract_error_info(body: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _handle_get_by_id(
-    conn: Connection,
+    client: ItsiRequest,
     service_id: str,
     result: Dict[str, Any],
 ) -> None:
     """Handle fetching a service by its _key.
 
     Args:
-        conn: Ansible connection object.
+        client: ItsiRequest instance.
         service_id: Service _key to fetch.
         result: Result dict to update.
     """
     path = f"{BASE}/{quote_plus(service_id)}"
-    status, body = _send(conn, "GET", path)
+    status, body = client.get(path)
     result["status"] = status
     result["raw"] = body
 
@@ -313,7 +287,7 @@ def main() -> None:
             msg="Use ansible_connection=httpapi and ansible_network_os=splunk.itsi.itsi_api_client",
         )
 
-    conn = Connection(module._socket_path)
+    client = ItsiRequest(Connection(module._socket_path))
     module_params = module.params
 
     result: Dict[str, Any] = {
@@ -325,12 +299,12 @@ def main() -> None:
 
     # Direct GET by key
     if module_params.get("service_id"):
-        _handle_get_by_id(conn, module_params["service_id"], result)
+        _handle_get_by_id(client, module_params["service_id"], result)
         module.exit_json(**result)
 
     # List path
     params = _build_list_params(module_params)
-    status, body = _send(conn, "GET", BASE, params=params)
+    status, body = client.get(BASE, params=params)
     result["status"] = status
     result["raw"] = body
     _parse_list_response(body, status, params, result)

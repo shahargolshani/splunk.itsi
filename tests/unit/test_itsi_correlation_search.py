@@ -28,19 +28,15 @@ class AnsibleFailJson(SystemExit):
 
 
 # Import module functions for testing
+from ansible_collections.splunk.itsi.plugins.module_utils.itsi_request import ItsiRequest
 from ansible_collections.splunk.itsi.plugins.module_utils.itsi_utils import (
     _flatten_search_entry,
     flatten_search_object,
-    handle_request_exception,
     normalize_to_list,
-    parse_response_body,
-    process_api_response,
-    validate_api_response,
 )
 from ansible_collections.splunk.itsi.plugins.modules.itsi_correlation_search import (
     _canonicalize,
     _diff_canonical,
-    _send_request,
     create_correlation_search,
     delete_correlation_search,
     ensure_present,
@@ -271,186 +267,6 @@ class TestDiffCanonical:
         assert result == {}
 
 
-class TestSendRequest:
-    """Tests for _send_request helper function."""
-
-    def test_send_request_success(self):
-        """Test successful request."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": json.dumps({"name": "test"}),
-            "headers": {},
-        }
-
-        status, data = _send_request(mock_conn, "GET", "/test/path")
-
-        assert status == 200
-        assert data["name"] == "test"
-
-    def test_send_request_with_json_payload(self):
-        """Test request with JSON payload."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": "{}",
-            "headers": {},
-        }
-
-        _send_request(mock_conn, "POST", "/test", payload={"key": "value"})
-
-        call_args = mock_conn.send_request.call_args
-        assert json.loads(call_args[1]["body"]) == {"key": "value"}
-
-    def test_send_request_with_form_data(self):
-        """Test request with form data."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": "{}",
-            "headers": {},
-        }
-
-        _send_request(mock_conn, "POST", "/test", payload={"key": "value"}, use_form_data=True)
-
-        call_args = mock_conn.send_request.call_args
-        assert "key=value" in call_args[1]["body"]
-        assert call_args[1]["headers"]["Content-Type"] == "application/x-www-form-urlencoded"
-
-    def test_send_request_with_string_payload(self):
-        """Test request with string payload."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": "{}",
-            "headers": {},
-        }
-
-        _send_request(mock_conn, "POST", "/test", payload="raw string")
-
-        call_args = mock_conn.send_request.call_args
-        assert call_args[1]["body"] == "raw string"
-
-    def test_send_request_with_none_payload(self):
-        """Test request with None payload."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": "{}",
-            "headers": {},
-        }
-
-        _send_request(mock_conn, "GET", "/test", payload=None)
-
-        call_args = mock_conn.send_request.call_args
-        assert call_args[1]["body"] == ""
-
-    def test_send_request_with_list_payload(self):
-        """Test request with list payload."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": "{}",
-            "headers": {},
-        }
-
-        _send_request(mock_conn, "POST", "/test", payload=[{"a": 1}, {"b": 2}])
-
-        call_args = mock_conn.send_request.call_args
-        assert json.loads(call_args[1]["body"]) == [{"a": 1}, {"b": 2}]
-
-    def test_send_request_list_response(self):
-        """Test request with list response."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": json.dumps([{"name": "item1"}]),
-            "headers": {},
-        }
-
-        status, data = _send_request(mock_conn, "GET", "/test")
-
-        assert "results" in data
-        assert len(data["results"]) == 1
-
-    def test_send_request_non_json_response(self):
-        """Test request with non-JSON response."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": "plain text",
-            "headers": {},
-        }
-
-        status, data = _send_request(mock_conn, "GET", "/test")
-
-        assert data["raw_response"] == "plain text"
-
-    def test_send_request_scalar_json_response(self):
-        """Test request with scalar JSON response."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": json.dumps(42),
-            "headers": {},
-        }
-
-        status, data = _send_request(mock_conn, "GET", "/test")
-
-        assert data["raw_response"] == 42
-
-    def test_send_request_empty_body(self):
-        """Test request with empty body."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 204,
-            "body": "",
-            "headers": {},
-        }
-
-        status, data = _send_request(mock_conn, "DELETE", "/test")
-
-        assert status == 204
-
-    def test_send_request_invalid_response(self):
-        """Test request with invalid response format."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = "invalid"
-
-        status, data = _send_request(mock_conn, "GET", "/test")
-
-        assert status == 500
-        assert "error" in data
-
-    def test_send_request_401_error(self):
-        """Test request with 401 error."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.side_effect = Exception("401 Unauthorized")
-
-        status, data = _send_request(mock_conn, "GET", "/test")
-
-        assert status == 401
-
-    def test_send_request_404_error(self):
-        """Test request with 404 error."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.side_effect = Exception("404 Not Found")
-
-        status, data = _send_request(mock_conn, "GET", "/test")
-
-        assert status == 404
-
-    def test_send_request_generic_error(self):
-        """Test request with generic error."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.side_effect = Exception("Network error")
-
-        status, data = _send_request(mock_conn, "GET", "/test")
-
-        assert status == 500
-        assert "Network error" in data["error"]
-
-
 class TestNormalizeToList:
     """Tests for normalize_to_list helper function."""
 
@@ -506,259 +322,6 @@ class TestNormalizeToList:
         assert result == []
 
 
-class TestParseResponseBody:
-    """Tests for parse_response_body helper function."""
-
-    def test_parse_empty_body(self):
-        """Test parsing empty body."""
-        result = parse_response_body("")
-        assert result == {}
-
-    def test_parse_none_body(self):
-        """Test parsing None body."""
-        result = parse_response_body(None)
-        assert result == {}
-
-    def test_parse_json_dict(self):
-        """Test parsing JSON dict."""
-        result = parse_response_body('{"name": "test", "value": 123}')
-        assert result["name"] == "test"
-        assert result["value"] == 123
-
-    def test_parse_json_list(self):
-        """Test parsing JSON list wraps in results."""
-        result = parse_response_body('[{"name": "item1"}, {"name": "item2"}]')
-        assert "results" in result
-        assert len(result["results"]) == 2
-
-    def test_parse_json_scalar_string(self):
-        """Test parsing JSON scalar string."""
-        result = parse_response_body('"scalar string"')
-        assert result["raw_response"] == "scalar string"
-
-    def test_parse_json_scalar_number(self):
-        """Test parsing JSON scalar number."""
-        result = parse_response_body("42")
-        assert result["raw_response"] == 42
-
-    def test_parse_json_scalar_bool(self):
-        """Test parsing JSON scalar boolean."""
-        result = parse_response_body("true")
-        assert result["raw_response"] is True
-
-    def test_parse_json_null(self):
-        """Test parsing JSON null."""
-        result = parse_response_body("null")
-        assert result["raw_response"] is None
-
-    def test_parse_invalid_json(self):
-        """Test parsing invalid JSON falls back to raw_response."""
-        result = parse_response_body("not valid json")
-        assert result["raw_response"] == "not valid json"
-
-    def test_parse_partial_json(self):
-        """Test parsing partial/truncated JSON."""
-        result = parse_response_body('{"name": "incomplete')
-        assert result["raw_response"] == '{"name": "incomplete'
-
-
-class TestValidateApiResponse:
-    """Tests for validate_api_response helper function."""
-
-    def test_validate_valid_response(self):
-        """Test validating a valid response."""
-        response = {"status": 200, "body": "{}", "headers": {}}
-        is_valid, error = validate_api_response(response)
-        assert is_valid is True
-        assert error == ""
-
-    def test_validate_non_dict(self):
-        """Test validating non-dict response."""
-        is_valid, error = validate_api_response("string")
-        assert is_valid is False
-        assert "Expected dict" in error
-
-    def test_validate_list_response(self):
-        """Test validating list response."""
-        is_valid, error = validate_api_response([1, 2, 3])
-        assert is_valid is False
-        assert "Expected dict" in error
-
-    def test_validate_missing_status(self):
-        """Test validating response missing status."""
-        response = {"body": "{}"}
-        is_valid, error = validate_api_response(response)
-        assert is_valid is False
-        assert "status" in error.lower()
-
-    def test_validate_missing_body(self):
-        """Test validating response missing body."""
-        response = {"status": 200}
-        is_valid, error = validate_api_response(response)
-        assert is_valid is False
-        assert "body" in error.lower()
-
-    def test_validate_none(self):
-        """Test validating None response."""
-        is_valid, error = validate_api_response(None)
-        assert is_valid is False
-
-    def test_validate_empty_dict(self):
-        """Test validating empty dict."""
-        is_valid, error = validate_api_response({})
-        assert is_valid is False
-
-
-class TestHandleRequestException:
-    """Tests for handle_request_exception helper function."""
-
-    def test_handle_401_exception(self):
-        """Test handling 401 Unauthorized exception."""
-        exc = Exception("401 Unauthorized")
-        status, data = handle_request_exception(exc)
-        assert status == 401
-        assert "Authentication failed" in data["error"]
-
-    def test_handle_unauthorized_exception(self):
-        """Test handling Unauthorized exception without status code."""
-        exc = Exception("Unauthorized access denied")
-        status, data = handle_request_exception(exc)
-        assert status == 401
-
-    def test_handle_404_exception(self):
-        """Test handling 404 Not Found exception."""
-        exc = Exception("404 Not Found")
-        status, data = handle_request_exception(exc)
-        assert status == 404
-        assert "not found" in data["error"].lower()
-
-    def test_handle_not_found_exception(self):
-        """Test handling Not Found exception without status code."""
-        exc = Exception("Resource Not Found")
-        status, data = handle_request_exception(exc)
-        assert status == 404
-
-    def test_handle_generic_exception(self):
-        """Test handling generic exception."""
-        exc = Exception("Connection timeout")
-        status, data = handle_request_exception(exc)
-        assert status == 500
-        assert "Connection timeout" in data["error"]
-
-    def test_handle_empty_exception(self):
-        """Test handling exception with empty message."""
-        exc = Exception("")
-        status, data = handle_request_exception(exc)
-        assert status == 500
-
-    def test_handle_network_error(self):
-        """Test handling network error exception."""
-        exc = Exception("Network unreachable")
-        status, data = handle_request_exception(exc)
-        assert status == 500
-        assert "Network unreachable" in data["error"]
-
-
-class TestProcessApiResponse:
-    """Tests for process_api_response helper function."""
-
-    def test_process_valid_json_dict_response(self):
-        """Test processing valid JSON dict response."""
-        result = {
-            "status": 200,
-            "body": '{"name": "test"}',
-            "headers": {"Content-Type": "application/json"},
-        }
-        status, data = process_api_response(result)
-        assert status == 200
-        assert data["name"] == "test"
-        assert "_response_headers" in data
-
-    def test_process_valid_json_list_response(self):
-        """Test processing valid JSON list response."""
-        result = {
-            "status": 200,
-            "body": '[{"name": "item1"}]',
-            "headers": {},
-        }
-        status, data = process_api_response(result)
-        assert status == 200
-        assert "results" in data
-        assert len(data["results"]) == 1
-
-    def test_process_empty_body_response(self):
-        """Test processing response with empty body."""
-        result = {
-            "status": 204,
-            "body": "",
-            "headers": {},
-        }
-        status, data = process_api_response(result)
-        assert status == 204
-        assert "_response_headers" in data
-
-    def test_process_non_json_response(self):
-        """Test processing non-JSON response."""
-        result = {
-            "status": 200,
-            "body": "plain text",
-            "headers": {},
-        }
-        status, data = process_api_response(result)
-        assert status == 200
-        assert data["raw_response"] == "plain text"
-
-    def test_process_invalid_response_format(self):
-        """Test processing invalid response format."""
-        status, data = process_api_response("not a dict")
-        assert status == 500
-        assert "error" in data
-
-    def test_process_missing_status(self):
-        """Test processing response missing status."""
-        result = {"body": "{}"}
-        status, data = process_api_response(result)
-        assert status == 500
-        assert "error" in data
-
-    def test_process_missing_body(self):
-        """Test processing response missing body."""
-        result = {"status": 200}
-        status, data = process_api_response(result)
-        assert status == 500
-        assert "error" in data
-
-    def test_process_headers_included(self):
-        """Test that headers are included in processed response."""
-        result = {
-            "status": 200,
-            "body": '{"key": "value"}',
-            "headers": {"X-Custom": "header-value"},
-        }
-        status, data = process_api_response(result)
-        assert data["_response_headers"]["X-Custom"] == "header-value"
-
-    def test_process_missing_headers_uses_empty_dict(self):
-        """Test that missing headers defaults to empty dict."""
-        result = {
-            "status": 200,
-            "body": '{"key": "value"}',
-        }
-        status, data = process_api_response(result)
-        assert data["_response_headers"] == {}
-
-    def test_process_scalar_json_response(self):
-        """Test processing scalar JSON response."""
-        result = {
-            "status": 200,
-            "body": "42",
-            "headers": {},
-        }
-        status, data = process_api_response(result)
-        assert status == 200
-        assert data["raw_response"] == 42
-
-
 class TestGetCorrelationSearch:
     """Tests for get_correlation_search function."""
 
@@ -771,7 +334,7 @@ class TestGetCorrelationSearch:
             "headers": {},
         }
 
-        status, data = get_correlation_search(mock_conn, "test-id")
+        status, data = get_correlation_search(ItsiRequest(mock_conn), "test-id")
 
         assert status == 200
         assert data["search"] == "index=main | head 1"
@@ -785,7 +348,7 @@ class TestGetCorrelationSearch:
             "headers": {},
         }
 
-        get_correlation_search(mock_conn, "Test Search", use_name_encoding=True)
+        get_correlation_search(ItsiRequest(mock_conn), "Test Search", use_name_encoding=True)
 
         call_args = mock_conn.send_request.call_args
         # Should use %20 encoding
@@ -800,7 +363,7 @@ class TestGetCorrelationSearch:
             "headers": {},
         }
 
-        get_correlation_search(mock_conn, "Test Search", use_name_encoding=False)
+        get_correlation_search(ItsiRequest(mock_conn), "Test Search", use_name_encoding=False)
 
         call_args = mock_conn.send_request.call_args
         # Should use + encoding
@@ -815,7 +378,7 @@ class TestGetCorrelationSearch:
             "headers": {},
         }
 
-        get_correlation_search(mock_conn, "test-id", fields="name,search")
+        get_correlation_search(ItsiRequest(mock_conn), "test-id", fields="name,search")
 
         call_args = mock_conn.send_request.call_args
         assert "fields=name%2Csearch" in call_args[0][0]
@@ -829,7 +392,7 @@ class TestGetCorrelationSearch:
             "headers": {},
         }
 
-        get_correlation_search(mock_conn, "test-id", fields=["name", "search"])
+        get_correlation_search(ItsiRequest(mock_conn), "test-id", fields=["name", "search"])
 
         call_args = mock_conn.send_request.call_args
         assert "fields=name%2Csearch" in call_args[0][0]
@@ -843,7 +406,7 @@ class TestGetCorrelationSearch:
             "headers": {},
         }
 
-        status, data = get_correlation_search(mock_conn, "nonexistent")
+        status, data = get_correlation_search(ItsiRequest(mock_conn), "nonexistent")
 
         assert status == 404
 
@@ -864,7 +427,7 @@ class TestCreateCorrelationSearch:
             "name": "New Search",
             "search": "index=main | head 1",
         }
-        status, data = create_correlation_search(mock_conn, search_data)
+        status, data = create_correlation_search(ItsiRequest(mock_conn), search_data)
 
         assert status == 200
         call_args = mock_conn.send_request.call_args
@@ -885,7 +448,7 @@ class TestCreateCorrelationSearch:
             "dispatch.earliest_time": "-15m",
             "dispatch.latest_time": "now",
         }
-        create_correlation_search(mock_conn, search_data)
+        create_correlation_search(ItsiRequest(mock_conn), search_data)
 
         call_args = mock_conn.send_request.call_args
         payload = json.loads(call_args[1]["body"])
@@ -908,7 +471,7 @@ class TestCreateCorrelationSearch:
             "earliest_time": "-1h",
             "latest_time": "now",
         }
-        create_correlation_search(mock_conn, search_data)
+        create_correlation_search(ItsiRequest(mock_conn), search_data)
 
         call_args = mock_conn.send_request.call_args
         payload = json.loads(call_args[1]["body"])
@@ -930,7 +493,7 @@ class TestUpdateCorrelationSearch:
         }
 
         update_data = {"disabled": "1"}
-        status, data = update_correlation_search(mock_conn, "test-id", update_data)
+        status, data = update_correlation_search(ItsiRequest(mock_conn), "test-id", update_data)
 
         assert status == 200
         call_args = mock_conn.send_request.call_args
@@ -945,7 +508,7 @@ class TestUpdateCorrelationSearch:
             "headers": {},
         }
 
-        update_correlation_search(mock_conn, "test-id", {"disabled": "0"})
+        update_correlation_search(ItsiRequest(mock_conn), "test-id", {"disabled": "0"})
 
         call_args = mock_conn.send_request.call_args
         payload = json.loads(call_args[1]["body"])
@@ -964,7 +527,7 @@ class TestUpdateCorrelationSearch:
             "dispatch.earliest_time": "-30m",
             "dispatch.latest_time": "now",
         }
-        update_correlation_search(mock_conn, "test-id", update_data)
+        update_correlation_search(ItsiRequest(mock_conn), "test-id", update_data)
 
         call_args = mock_conn.send_request.call_args
         payload = json.loads(call_args[1]["body"])
@@ -979,7 +542,7 @@ class TestUpdateCorrelationSearch:
             "headers": {},
         }
 
-        update_correlation_search(mock_conn, "test-id", None)
+        update_correlation_search(ItsiRequest(mock_conn), "test-id", None)
 
         call_args = mock_conn.send_request.call_args
         payload = json.loads(call_args[1]["body"])
@@ -998,7 +561,7 @@ class TestDeleteCorrelationSearch:
             "headers": {},
         }
 
-        status, data = delete_correlation_search(mock_conn, "test-id")
+        status, data = delete_correlation_search(ItsiRequest(mock_conn), "test-id")
 
         assert status == 204
         call_args = mock_conn.send_request.call_args
@@ -1013,7 +576,7 @@ class TestDeleteCorrelationSearch:
             "headers": {},
         }
 
-        delete_correlation_search(mock_conn, "Test Search", use_name_encoding=True)
+        delete_correlation_search(ItsiRequest(mock_conn), "Test Search", use_name_encoding=True)
 
         call_args = mock_conn.send_request.call_args
         assert "Test%20Search" in call_args[0][0]
@@ -1027,7 +590,7 @@ class TestDeleteCorrelationSearch:
             "headers": {},
         }
 
-        delete_correlation_search(mock_conn, "Test Search", use_name_encoding=False)
+        delete_correlation_search(ItsiRequest(mock_conn), "Test Search", use_name_encoding=False)
 
         call_args = mock_conn.send_request.call_args
         assert "Test+Search" in call_args[0][0]
@@ -1048,7 +611,7 @@ class TestEnsurePresent:
 
         result = {}
         desired_data = {"name": "new-search", "search": "test"}
-        ensure_present(mock_conn, "new-search", desired_data, result)
+        ensure_present(ItsiRequest(mock_conn), "new-search", desired_data, result)
 
         assert result["operation"] == "create"
         assert result["changed"] is True
@@ -1069,7 +632,7 @@ class TestEnsurePresent:
             "search": "index=main | head 1",
             "disabled": False,
         }
-        ensure_present(mock_conn, "Test Search", desired_data, result)
+        ensure_present(ItsiRequest(mock_conn), "Test Search", desired_data, result)
 
         assert result["operation"] == "no_change"
         assert result["changed"] is False
@@ -1089,7 +652,7 @@ class TestEnsurePresent:
             "name": "Test Search",
             "description": "New description",
         }
-        ensure_present(mock_conn, "Test Search", desired_data, result)
+        ensure_present(ItsiRequest(mock_conn), "Test Search", desired_data, result)
 
         assert result["operation"] == "update"
         assert result["changed"] is True
@@ -1125,7 +688,7 @@ class TestEnsurePresent:
             "name": "Test Search",
             "cron_schedule": "*/10 * * * *",  # Changed cron
         }
-        ensure_present(mock_conn, "Test Search", desired_data, result)
+        ensure_present(ItsiRequest(mock_conn), "Test Search", desired_data, result)
 
         # Verify update was called with is_scheduled
         call_args = mock_conn.send_request.call_args_list[1]
@@ -1142,7 +705,7 @@ class TestEnsurePresent:
         }
 
         result = {}
-        ensure_present(mock_conn, "test", {"name": "test"}, result)
+        ensure_present(ItsiRequest(mock_conn), "test", {"name": "test"}, result)
 
         assert result["operation"] == "error"
         assert result["status"] == 500

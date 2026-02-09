@@ -249,11 +249,11 @@ from ansible.module_utils.basic import AnsibleModule
 from ansible.module_utils.connection import Connection
 
 # Import shared utilities
+from ansible_collections.splunk.itsi.plugins.module_utils.itsi_request import ItsiRequest
 from ansible_collections.splunk.itsi.plugins.module_utils.itsi_utils import (
     BASE_AGGREGATION_POLICY_ENDPOINT,
     flatten_policy_object,
     get_aggregation_policy_by_id,
-    send_itsi_request,
 )
 
 
@@ -329,12 +329,12 @@ def _diff_canonical(desired_canon, current_canon):
     return diffs
 
 
-def create_aggregation_policy(conn, policy_data):
+def create_aggregation_policy(client, policy_data):
     """
     Create a new aggregation policy via EMI.
 
     Args:
-        conn: Connection object
+        client: ItsiRequest instance
         policy_data: Dictionary containing policy configuration
 
     Returns:
@@ -355,16 +355,16 @@ def create_aggregation_policy(conn, policy_data):
             payload[key] = value
 
     params = {"output_mode": "json"}
-    status, data = send_itsi_request(conn, "POST", BASE_AGGREGATION_POLICY_ENDPOINT, params=params, payload=payload)
+    status, data = client.post(BASE_AGGREGATION_POLICY_ENDPOINT, params=params, payload=payload)
     return status, data
 
 
-def update_aggregation_policy(conn, policy_id, update_data):
+def update_aggregation_policy(client, policy_id, update_data):
     """
     Update aggregation policy via EMI with is_partial_data=1.
 
     Args:
-        conn: Connection object
+        client: ItsiRequest instance
         policy_id: Policy ID (_key) - must use ID for updates
         update_data: Dictionary containing fields to update
 
@@ -372,7 +372,7 @@ def update_aggregation_policy(conn, policy_id, update_data):
         tuple: (status_code, response_data)
     """
     # First get current policy to ensure all required fields are present
-    current_status, current_data = get_aggregation_policy_by_id(conn, policy_id)
+    current_status, current_data = get_aggregation_policy_by_id(client, policy_id)
     if current_status != 200:
         return current_status, current_data
 
@@ -393,15 +393,15 @@ def update_aggregation_policy(conn, policy_id, update_data):
         if key not in payload:
             payload[key] = value
 
-    return send_itsi_request(conn, "POST", path, params=params, payload=payload)
+    return client.post(path, params=params, payload=payload)
 
 
-def delete_aggregation_policy(conn, policy_id):
+def delete_aggregation_policy(client, policy_id):
     """
     Delete an aggregation policy by ID.
 
     Args:
-        conn: Connection object
+        client: ItsiRequest instance
         policy_id: Policy ID (_key) - must use ID for deletion
 
     Returns:
@@ -409,7 +409,7 @@ def delete_aggregation_policy(conn, policy_id):
     """
     path = f"{BASE_AGGREGATION_POLICY_ENDPOINT}/{quote_plus(policy_id)}"
     params = {"output_mode": "json"}
-    status, data = send_itsi_request(conn, "DELETE", path, params=params)
+    status, data = client.delete(path, params=params)
     return status, data
 
 
@@ -440,7 +440,7 @@ def _build_result(changed, status, data, operation, **extra):
     return result
 
 
-def _handle_policy_update(conn, policy_id, current_data, desired_data):
+def _handle_policy_update(client, policy_id, current_data, desired_data):
     """Handle update of existing policy, checking for changes."""
     current_canon = _canonicalize_policy(current_data)
     desired_canon = _canonicalize_policy(desired_data)
@@ -451,7 +451,7 @@ def _handle_policy_update(conn, policy_id, current_data, desired_data):
         return _build_result(False, 200, current_data, "no_change", aggregation_policy=current_data)
 
     # Update needed
-    status, data = update_aggregation_policy(conn, policy_id, desired_canon)
+    status, data = update_aggregation_policy(client, policy_id, desired_canon)
     result = _build_result(True, status, data, "update", diff=diff)
     if status == 200:
         result["aggregation_policy"] = data
@@ -464,16 +464,16 @@ def _handle_policy_not_found(policy_id):
     return _build_result(False, 404, error_data, "error")
 
 
-def _handle_policy_create(conn, desired_data):
+def _handle_policy_create(client, desired_data):
     """Handle creation of new policy."""
-    status, data = create_aggregation_policy(conn, desired_data)
+    status, data = create_aggregation_policy(client, desired_data)
     result = _build_result(True, status, data, "create")
     if status == 200:
         result["aggregation_policy"] = data
     return result
 
 
-def ensure_present(conn, policy_id, desired_data, result):
+def ensure_present(client, policy_id, desired_data, result):
     """
     Ensure aggregation policy exists and is configured as desired.
 
@@ -482,20 +482,20 @@ def ensure_present(conn, policy_id, desired_data, result):
     - If policy_id is NOT provided: always create a new policy (title required in desired_data)
 
     Args:
-        conn: Connection object
+        client: ItsiRequest instance
         policy_id: Policy ID (_key) - if provided, update existing; if not, create new
         desired_data: Desired policy configuration (title required only for create)
         result: Result dictionary to update
     """
     if not policy_id:
-        result.update(_handle_policy_create(conn, desired_data))
+        result.update(_handle_policy_create(client, desired_data))
         return
 
     # policy_id provided - lookup and update if needed
-    current_status, current_data = get_aggregation_policy_by_id(conn, policy_id)
+    current_status, current_data = get_aggregation_policy_by_id(client, policy_id)
 
     if current_status == 200:
-        result.update(_handle_policy_update(conn, policy_id, current_data, desired_data))
+        result.update(_handle_policy_update(client, policy_id, current_data, desired_data))
     elif current_status == 404:
         result.update(_handle_policy_not_found(policy_id))
     else:
@@ -533,10 +533,10 @@ def _build_desired_data(params):
     return desired_data
 
 
-def _handle_present_check_mode(conn, policy_id, desired_data):
+def _handle_present_check_mode(client, policy_id, desired_data):
     """Handle check_mode for present state."""
     if policy_id:
-        existing_status, _existing_data = get_aggregation_policy_by_id(conn, policy_id)
+        existing_status, _existing_data = get_aggregation_policy_by_id(client, policy_id)
         operation = "update" if existing_status == 200 else "error"
     else:
         operation = "create"
@@ -559,9 +559,9 @@ def _handle_absent_check_mode():
     }
 
 
-def _handle_absent_delete(conn, policy_id):
+def _handle_absent_delete(client, policy_id):
     """Handle actual deletion of policy."""
-    status, data = delete_aggregation_policy(conn, policy_id)
+    status, data = delete_aggregation_policy(client, policy_id)
     return {
         "changed": status == 204,
         "status": status,
@@ -581,7 +581,7 @@ def _handle_absent_not_found():
     }
 
 
-def _handle_state_present(module, conn, result):
+def _handle_state_present(module, client, result):
     """Handle state=present logic."""
     policy_id = module.params.get("policy_id")
     title = module.params.get("title")
@@ -592,26 +592,26 @@ def _handle_state_present(module, conn, result):
     desired_data = _build_desired_data(module.params)
 
     if module.check_mode:
-        result.update(_handle_present_check_mode(conn, policy_id, desired_data))
+        result.update(_handle_present_check_mode(client, policy_id, desired_data))
     else:
-        ensure_present(conn, policy_id, desired_data, result)
+        ensure_present(client, policy_id, desired_data, result)
 
 
-def _handle_state_absent(module, conn, result):
+def _handle_state_absent(module, client, result):
     """Handle state=absent logic."""
     policy_id = module.params.get("policy_id")
 
     if not policy_id:
         module.fail_json(msg="'policy_id' is required for absent state (titles are not unique)")
 
-    existing_status, _existing_data = get_aggregation_policy_by_id(conn, policy_id)
+    existing_status, _existing_data = get_aggregation_policy_by_id(client, policy_id)
 
     if existing_status != 200:
         result.update(_handle_absent_not_found())
     elif module.check_mode:
         result.update(_handle_absent_check_mode())
     else:
-        result.update(_handle_absent_delete(conn, policy_id))
+        result.update(_handle_absent_delete(client, policy_id))
 
 
 def main():
@@ -643,7 +643,7 @@ def main():
     )
 
     try:
-        conn = Connection(module._socket_path)
+        client = ItsiRequest(Connection(module._socket_path))
         result = {
             "changed": False,
             "status": 0,
@@ -654,9 +654,9 @@ def main():
 
         state = module.params["state"]
         if state == "present":
-            _handle_state_present(module, conn, result)
+            _handle_state_present(module, client, result)
         elif state == "absent":
-            _handle_state_absent(module, conn, result)
+            _handle_state_absent(module, client, result)
 
         module.exit_json(**result)
 

@@ -24,13 +24,13 @@ class AnsibleFailJson(SystemExit):
 
 
 # Import shared utilities from module_utils
+from ansible_collections.splunk.itsi.plugins.module_utils.itsi_request import ItsiRequest
 from ansible_collections.splunk.itsi.plugins.module_utils.itsi_utils import (
     flatten_policy_object,
     get_aggregation_policies_by_title,
     get_aggregation_policy_by_id,
     list_aggregation_policies,
     normalize_policy_list,
-    send_itsi_request,
 )
 
 # Import module functions for testing
@@ -155,114 +155,6 @@ class TestFlattenPolicyObject:
         assert result == "string value"
 
 
-class TestSendItsiRequest:
-    """Tests for send_itsi_request helper function."""
-
-    def test_send_request_success(self):
-        """Test successful request."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": json.dumps({"_key": "test"}),
-            "headers": {},
-        }
-
-        status, data = send_itsi_request(mock_conn, "GET", "/test/path")
-
-        assert status == 200
-        assert data["_key"] == "test"
-
-    def test_send_request_with_params(self):
-        """Test request with query parameters."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": "{}",
-            "headers": {},
-        }
-
-        send_itsi_request(mock_conn, "GET", "/test", params={"output_mode": "json", "limit": 10})
-
-        call_args = mock_conn.send_request.call_args
-        assert "output_mode=json" in call_args[0][0]
-        assert "limit=10" in call_args[0][0]
-
-    def test_send_request_filters_none_params(self):
-        """Test request filters None params."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": "{}",
-            "headers": {},
-        }
-
-        send_itsi_request(mock_conn, "GET", "/test", params={"keep": "value", "remove": None})
-
-        call_args = mock_conn.send_request.call_args
-        assert "keep=value" in call_args[0][0]
-        assert "remove" not in call_args[0][0]
-
-    def test_send_request_empty_body(self):
-        """Test request with empty body response."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": "",
-            "headers": {},
-        }
-
-        status, data = send_itsi_request(mock_conn, "GET", "/test")
-
-        assert status == 200
-        assert "_response_headers" in data
-
-    def test_send_request_non_json_response(self):
-        """Test request with non-JSON response."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": "plain text",
-            "headers": {},
-        }
-
-        status, data = send_itsi_request(mock_conn, "GET", "/test")
-
-        assert data["raw_response"] == "plain text"
-
-    def test_send_request_invalid_response_format(self):
-        """Test request with invalid response format."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = "invalid"
-
-        status, data = send_itsi_request(mock_conn, "GET", "/test")
-
-        assert status == 500
-        assert "error" in data
-
-    def test_send_request_exception(self):
-        """Test request with exception."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.side_effect = Exception("Network error")
-
-        status, data = send_itsi_request(mock_conn, "GET", "/test")
-
-        assert status == 500
-        assert "Network error" in data["error"]
-
-    def test_send_request_includes_headers(self):
-        """Test request includes response headers."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": '{"key": "value"}',
-            "headers": {"X-Custom": "header"},
-        }
-
-        status, data = send_itsi_request(mock_conn, "GET", "/test")
-
-        assert data["_response_headers"]["X-Custom"] == "header"
-
-
 class TestGetAggregationPolicyById:
     """Tests for get_aggregation_policy_by_id function."""
 
@@ -275,7 +167,7 @@ class TestGetAggregationPolicyById:
             "headers": {},
         }
 
-        status, data = get_aggregation_policy_by_id(mock_conn, "test_policy_id")
+        status, data = get_aggregation_policy_by_id(ItsiRequest(mock_conn), "test_policy_id")
 
         assert status == 200
         assert data["title"] == "Test Policy"
@@ -289,7 +181,7 @@ class TestGetAggregationPolicyById:
             "headers": {},
         }
 
-        get_aggregation_policy_by_id(mock_conn, "test_policy_id", fields="title,disabled")
+        get_aggregation_policy_by_id(ItsiRequest(mock_conn), "test_policy_id", fields="title,disabled")
 
         call_args = mock_conn.send_request.call_args
         assert "fields=title%2Cdisabled" in call_args[0][0]
@@ -303,7 +195,7 @@ class TestGetAggregationPolicyById:
             "headers": {},
         }
 
-        status, data = get_aggregation_policy_by_id(mock_conn, "nonexistent")
+        status, data = get_aggregation_policy_by_id(ItsiRequest(mock_conn), "nonexistent")
 
         assert status == 404
 
@@ -316,7 +208,7 @@ class TestGetAggregationPolicyById:
             "headers": {},
         }
 
-        get_aggregation_policy_by_id(mock_conn, "policy with spaces")
+        get_aggregation_policy_by_id(ItsiRequest(mock_conn), "policy with spaces")
 
         call_args = mock_conn.send_request.call_args
         assert "policy+with+spaces" in call_args[0][0]
@@ -334,7 +226,7 @@ class TestListAggregationPolicies:
             "headers": {},
         }
 
-        status, data = list_aggregation_policies(mock_conn)
+        status, data = list_aggregation_policies(ItsiRequest(mock_conn))
 
         assert status == 200
         assert "aggregation_policies" in data
@@ -349,7 +241,7 @@ class TestListAggregationPolicies:
             "headers": {},
         }
 
-        list_aggregation_policies(mock_conn, fields="_key,title")
+        list_aggregation_policies(ItsiRequest(mock_conn), fields="_key,title")
 
         call_args = mock_conn.send_request.call_args
         assert "fields=_key%2Ctitle" in call_args[0][0]
@@ -363,7 +255,7 @@ class TestListAggregationPolicies:
             "headers": {},
         }
 
-        list_aggregation_policies(mock_conn, filter_data='{"disabled": 0}')
+        list_aggregation_policies(ItsiRequest(mock_conn), filter_data='{"disabled": 0}')
 
         call_args = mock_conn.send_request.call_args
         assert "filter_data" in call_args[0][0]
@@ -377,7 +269,7 @@ class TestListAggregationPolicies:
             "headers": {},
         }
 
-        list_aggregation_policies(mock_conn, limit=5)
+        list_aggregation_policies(ItsiRequest(mock_conn), limit=5)
 
         call_args = mock_conn.send_request.call_args
         assert "limit=5" in call_args[0][0]
@@ -391,7 +283,7 @@ class TestListAggregationPolicies:
             "headers": {},
         }
 
-        status, data = list_aggregation_policies(mock_conn)
+        status, data = list_aggregation_policies(ItsiRequest(mock_conn))
 
         assert status == 200
         assert data["aggregation_policies"] == []
@@ -405,7 +297,7 @@ class TestListAggregationPolicies:
             "headers": {},
         }
 
-        status, data = list_aggregation_policies(mock_conn)
+        status, data = list_aggregation_policies(ItsiRequest(mock_conn))
 
         assert status == 500
 
@@ -422,7 +314,7 @@ class TestGetAggregationPoliciesByTitle:
             "headers": {},
         }
 
-        status, data = get_aggregation_policies_by_title(mock_conn, "Test Policy")
+        status, data = get_aggregation_policies_by_title(ItsiRequest(mock_conn), "Test Policy")
 
         assert status == 200
         assert len(data["aggregation_policies"]) == 1
@@ -437,7 +329,7 @@ class TestGetAggregationPoliciesByTitle:
             "headers": {},
         }
 
-        status, data = get_aggregation_policies_by_title(mock_conn, "Test Policy")
+        status, data = get_aggregation_policies_by_title(ItsiRequest(mock_conn), "Test Policy")
 
         assert status == 200
         assert len(data["aggregation_policies"]) == 2  # Both SAMPLE_POLICY and SAMPLE_POLICY_2
@@ -451,7 +343,7 @@ class TestGetAggregationPoliciesByTitle:
             "headers": {},
         }
 
-        status, data = get_aggregation_policies_by_title(mock_conn, "Nonexistent Title")
+        status, data = get_aggregation_policies_by_title(ItsiRequest(mock_conn), "Nonexistent Title")
 
         assert status == 200
         assert len(data["aggregation_policies"]) == 0
@@ -465,7 +357,7 @@ class TestGetAggregationPoliciesByTitle:
             "headers": {},
         }
 
-        get_aggregation_policies_by_title(mock_conn, "Test Policy", fields="_key,title")
+        get_aggregation_policies_by_title(ItsiRequest(mock_conn), "Test Policy", fields="_key,title")
 
         call_args = mock_conn.send_request.call_args
         assert "fields=_key%2Ctitle" in call_args[0][0]
@@ -479,7 +371,7 @@ class TestGetAggregationPoliciesByTitle:
             "headers": {},
         }
 
-        status, data = get_aggregation_policies_by_title(mock_conn, "Test Policy")
+        status, data = get_aggregation_policies_by_title(ItsiRequest(mock_conn), "Test Policy")
 
         assert status == 500
 
@@ -498,7 +390,7 @@ class TestGetAggregationPoliciesByTitle:
             "headers": {},
         }
 
-        status, data = get_aggregation_policies_by_title(mock_conn, "Test Policy")
+        status, data = get_aggregation_policies_by_title(ItsiRequest(mock_conn), "Test Policy")
 
         assert status == 200
         assert len(data["aggregation_policies"]) == 1
@@ -547,7 +439,7 @@ class TestQueryByPolicyId:
             "headers": {},
         }
 
-        result = _query_by_policy_id(mock_conn, "test_policy_id", None)
+        result = _query_by_policy_id(ItsiRequest(mock_conn), "test_policy_id", None)
 
         assert result["status"] == 200
         assert result["aggregation_policy"]["_key"] == "test_policy_id"
@@ -562,7 +454,7 @@ class TestQueryByPolicyId:
             "headers": {},
         }
 
-        result = _query_by_policy_id(mock_conn, "nonexistent", None)
+        result = _query_by_policy_id(ItsiRequest(mock_conn), "nonexistent", None)
 
         assert result["status"] == 404
         assert result["aggregation_policy"] is None
@@ -576,7 +468,7 @@ class TestQueryByPolicyId:
             "headers": {},
         }
 
-        _query_by_policy_id(mock_conn, "test_policy_id", "title,disabled")
+        _query_by_policy_id(ItsiRequest(mock_conn), "test_policy_id", "title,disabled")
 
         call_args = mock_conn.send_request.call_args
         assert "fields=title%2Cdisabled" in call_args[0][0]
@@ -590,7 +482,7 @@ class TestQueryByPolicyId:
             "headers": {},
         }
 
-        result = _query_by_policy_id(mock_conn, "test_policy_id", None)
+        result = _query_by_policy_id(ItsiRequest(mock_conn), "test_policy_id", None)
 
         assert result["status"] == 500
         assert result["headers"] == {}
@@ -608,7 +500,7 @@ class TestQueryByTitle:
             "headers": {},
         }
 
-        result = _query_by_title(mock_conn, "Test Policy", None)
+        result = _query_by_title(ItsiRequest(mock_conn), "Test Policy", None)
 
         assert result["status"] == 200
         assert len(result["aggregation_policies"]) == 1
@@ -624,7 +516,7 @@ class TestQueryByTitle:
             "headers": {},
         }
 
-        result = _query_by_title(mock_conn, "Test Policy", None)
+        result = _query_by_title(ItsiRequest(mock_conn), "Test Policy", None)
 
         assert result["status"] == 200
         assert len(result["aggregation_policies"]) == 2
@@ -639,7 +531,7 @@ class TestQueryByTitle:
             "headers": {},
         }
 
-        result = _query_by_title(mock_conn, "Test Policy", None)
+        result = _query_by_title(ItsiRequest(mock_conn), "Test Policy", None)
 
         assert result["status"] == 200
         assert len(result["aggregation_policies"]) == 0
@@ -654,7 +546,7 @@ class TestQueryByTitle:
             "headers": {},
         }
 
-        _query_by_title(mock_conn, "Test Policy", "_key,title")
+        _query_by_title(ItsiRequest(mock_conn), "Test Policy", "_key,title")
 
         call_args = mock_conn.send_request.call_args
         assert "fields=_key%2Ctitle" in call_args[0][0]
@@ -668,7 +560,7 @@ class TestQueryByTitle:
             "headers": {},
         }
 
-        result = _query_by_title(mock_conn, "Test Policy", None)
+        result = _query_by_title(ItsiRequest(mock_conn), "Test Policy", None)
 
         assert result["status"] == 500
         assert result["aggregation_policies"] == []
@@ -686,7 +578,7 @@ class TestListAllPolicies:
             "headers": {},
         }
 
-        result = _list_all_policies(mock_conn, None, None, None)
+        result = _list_all_policies(ItsiRequest(mock_conn), None, None, None)
 
         assert result["status"] == 200
         assert len(result["aggregation_policies"]) == 2
@@ -701,7 +593,7 @@ class TestListAllPolicies:
             "headers": {},
         }
 
-        _list_all_policies(mock_conn, "_key,title", None, None)
+        _list_all_policies(ItsiRequest(mock_conn), "_key,title", None, None)
 
         call_args = mock_conn.send_request.call_args
         assert "fields=_key%2Ctitle" in call_args[0][0]
@@ -715,7 +607,7 @@ class TestListAllPolicies:
             "headers": {},
         }
 
-        _list_all_policies(mock_conn, None, '{"disabled": 0}', None)
+        _list_all_policies(ItsiRequest(mock_conn), None, '{"disabled": 0}', None)
 
         call_args = mock_conn.send_request.call_args
         assert "filter_data" in call_args[0][0]
@@ -729,7 +621,7 @@ class TestListAllPolicies:
             "headers": {},
         }
 
-        _list_all_policies(mock_conn, None, None, 5)
+        _list_all_policies(ItsiRequest(mock_conn), None, None, 5)
 
         call_args = mock_conn.send_request.call_args
         assert "limit=5" in call_args[0][0]
@@ -743,7 +635,7 @@ class TestListAllPolicies:
             "headers": {},
         }
 
-        result = _list_all_policies(mock_conn, None, None, None)
+        result = _list_all_policies(ItsiRequest(mock_conn), None, None, None)
 
         assert result["status"] == 200
         assert result["aggregation_policies"] == []
@@ -757,7 +649,7 @@ class TestListAllPolicies:
             "headers": {},
         }
 
-        result = _list_all_policies(mock_conn, None, None, None)
+        result = _list_all_policies(ItsiRequest(mock_conn), None, None, None)
 
         assert result["status"] == 500
         assert result["aggregation_policies"] == []

@@ -5,9 +5,8 @@
 
 from __future__ import annotations
 
-import json
 from typing import Any
-from urllib.parse import quote_plus, urlencode
+from urllib.parse import quote_plus
 
 # API endpoint constants
 BASE_AGGREGATION_POLICY_ENDPOINT = "servicesNS/nobody/SA-ITOA/event_management_interface/notable_event_aggregation_policy"
@@ -72,103 +71,6 @@ def normalize_to_list(data: Any) -> list:
     return []
 
 
-def parse_response_body(body_text: str) -> dict[str, Any]:
-    """
-    Parse response body from Splunk API.
-
-    Args:
-        body_text: Raw response body text
-
-    Returns:
-        dict: Parsed response data, always as a dictionary
-    """
-    if not body_text:
-        return {}
-
-    try:
-        parsed_data = json.loads(body_text)
-        # Ensure we always return a dict, even if API returns a list
-        if isinstance(parsed_data, list):
-            return {"results": parsed_data}
-        elif isinstance(parsed_data, dict):
-            return parsed_data
-        else:
-            return {"raw_response": parsed_data}
-    except ValueError:
-        return {"raw_response": body_text}
-
-
-def validate_api_response(result: Any) -> tuple[bool, str]:
-    """
-    Validate that an API response has the expected format.
-
-    Args:
-        result: Response from send_request
-
-    Returns:
-        tuple: (is_valid, error_message)
-    """
-    if not isinstance(result, dict):
-        return False, f"Expected dict, got: {type(result)}"
-    if "status" not in result:
-        return False, "Missing 'status' in response"
-    if "body" not in result:
-        return False, "Missing 'body' in response"
-    return True, ""
-
-
-def handle_request_exception(exc: Exception) -> tuple[int, dict[str, str]]:
-    """
-    Handle common exceptions from API requests.
-
-    Args:
-        exc: The exception that was raised
-
-    Returns:
-        tuple: (status_code, error_dict)
-    """
-    error_text = str(exc)
-
-    # Handle common error patterns
-    if "401" in error_text or "Unauthorized" in error_text:
-        return 401, {"error": "Authentication failed"}
-    elif "404" in error_text or "Not Found" in error_text:
-        return 404, {"error": "Resource not found"}
-    else:
-        return 500, {"error": error_text}
-
-
-def process_api_response(result: Any) -> tuple[int, dict[str, Any]]:
-    """
-    Process and normalize an API response from send_request.
-
-    Args:
-        result: Raw response from connection.send_request
-
-    Returns:
-        tuple: (status_code, response_dict with parsed body and headers)
-    """
-    # Validate response format
-    is_valid, error_msg = validate_api_response(result)
-    if not is_valid:
-        return 500, {"error": f"Invalid response format from send_request. {error_msg}"}
-
-    status = result["status"]
-    headers = result.get("headers", {})
-    body_text = result["body"]
-
-    # Parse response body
-    data = parse_response_body(body_text)
-
-    # Include headers in response for debugging (ensure data is dict)
-    if isinstance(data, dict):
-        data["_response_headers"] = headers
-    else:
-        data = {"results": data, "_response_headers": headers}
-
-    return status, data
-
-
 # =============================================================================
 # Aggregation Policy Utilities
 # =============================================================================
@@ -225,85 +127,13 @@ def flatten_policy_object(policy_obj: Any) -> Any:
         return policy_obj
 
 
-def _build_request_path(path: str, params: dict[str, Any] | None) -> str:
-    """Build request path with query parameters."""
-    if not params:
-        return path
-
-    query_params = {k: v for k, v in params.items() if v is not None and v != ""}
-    if not query_params:
-        return path
-
-    sep = "&" if "?" in path else "?"
-    return f"{path}{sep}{urlencode(query_params, doseq=True)}"
-
-
-def _prepare_request_body(payload: dict | list | str | None) -> str:
-    """Prepare request body from payload."""
-    if isinstance(payload, (dict, list)):
-        return json.dumps(payload)
-    if payload is None:
-        return ""
-    return str(payload)
-
-
-def _parse_response(result: dict) -> tuple[int, dict[str, Any]]:
-    """Parse response from send_request."""
-    status = result["status"]
-    body_text = result["body"]
-    headers = result.get("headers", {})
-
-    if not body_text:
-        return status, {"_response_headers": headers}
-
-    try:
-        parsed_data = json.loads(body_text)
-        if isinstance(parsed_data, dict):
-            parsed_data["_response_headers"] = headers
-        return status, parsed_data
-    except json.JSONDecodeError:
-        return status, {"raw_response": body_text, "_response_headers": headers}
-
-
-def send_itsi_request(
-    conn: Any,
-    method: str,
-    path: str,
-    params: dict[str, Any] | None = None,
-    payload: dict | list | str | None = None,
-) -> tuple[int, dict[str, Any]]:
-    """
-    Send request via itsi_api_client.
-
-    Args:
-        conn: Connection object
-        method: HTTP method (GET, POST, DELETE)
-        path: API path
-        params: Query parameters dict
-        payload: Request body data (dict, list, or string)
-
-    Returns:
-        tuple: (status_code, response_dict)
-    """
-    try:
-        request_path = _build_request_path(path, params)
-        body = _prepare_request_body(payload)
-        result = conn.send_request(request_path, method=method.upper(), body=body)
-
-        # Validate response format
-        if not isinstance(result, dict) or "status" not in result or "body" not in result:
-            return 500, {
-                "error": f"Invalid response format from send_request. Expected dict with 'status' and 'body', got: {type(result)}",
-            }
-
-        return _parse_response(result)
-
-    except Exception as e:
-        return 500, {"error": f"Request failed: {str(e)}"}
+# =============================================================================
+# Aggregation Policy API Functions
+# =============================================================================
 
 
 def get_aggregation_policy_by_id(
-    conn: Any,
+    client: Any,
     policy_id: str,
     fields: str | None = None,
 ) -> tuple[int, dict[str, Any]]:
@@ -311,7 +141,7 @@ def get_aggregation_policy_by_id(
     Get a specific aggregation policy by ID (_key) via EMI.
 
     Args:
-        conn: Connection object
+        client: ItsiRequest instance
         policy_id: Policy ID (_key)
         fields: Comma-separated list of fields to retrieve
 
@@ -319,12 +149,12 @@ def get_aggregation_policy_by_id(
         tuple: (status_code, policy_data)
     """
     path = f"{BASE_AGGREGATION_POLICY_ENDPOINT}/{quote_plus(policy_id)}"
-    params = {"output_mode": "json"}
+    params: dict[str, Any] = {"output_mode": "json"}
 
     if fields:
         params["fields"] = fields
 
-    status, data = send_itsi_request(conn, "GET", path, params=params)
+    status, data = client.get(path, params=params)
 
     if status == 200:
         # Flatten the policy object for consistent access
@@ -335,7 +165,7 @@ def get_aggregation_policy_by_id(
 
 
 def list_aggregation_policies(
-    conn: Any,
+    client: Any,
     fields: str | None = None,
     filter_data: str | None = None,
     limit: int | None = None,
@@ -344,7 +174,7 @@ def list_aggregation_policies(
     List aggregation policies via EMI.
 
     Args:
-        conn: Connection object
+        client: ItsiRequest instance
         fields: Comma-separated list of fields to retrieve
         filter_data: MongoDB-style JSON filter string
         limit: Maximum number of results
@@ -361,7 +191,7 @@ def list_aggregation_policies(
     if limit:
         params["limit"] = limit
 
-    status, data = send_itsi_request(conn, "GET", BASE_AGGREGATION_POLICY_ENDPOINT, params=params)
+    status, data = client.get(BASE_AGGREGATION_POLICY_ENDPOINT, params=params)
 
     if status == 200:
         entries = normalize_policy_list(data)
@@ -371,12 +201,12 @@ def list_aggregation_policies(
             "_response_headers": data.get("_response_headers", {}) if isinstance(data, dict) else {},
         }
         return status, result_data
-    else:
-        return status, data
+
+    return status, data
 
 
 def get_aggregation_policies_by_title(
-    conn: Any,
+    client: Any,
     title: str,
     fields: str | None = None,
 ) -> tuple[int, dict[str, Any]]:
@@ -388,7 +218,7 @@ def get_aggregation_policies_by_title(
     across different ITSI versions.
 
     Args:
-        conn: Connection object
+        client: ItsiRequest instance
         title: Policy title to search for
         fields: Comma-separated list of fields to retrieve
 
@@ -398,7 +228,7 @@ def get_aggregation_policies_by_title(
     """
     # Fetch all policies and filter client-side for reliability
     # (EMI API doesn't reliably support server-side title filtering)
-    status, data = list_aggregation_policies(conn, fields=fields)
+    status, data = list_aggregation_policies(client, fields=fields)
 
     if status != 200:
         return status, data

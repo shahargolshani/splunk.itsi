@@ -29,10 +29,10 @@ class AnsibleFailJson(SystemExit):
 
 # Import module functions for testing
 # Note: Tests for shared itsi_utils functions (flatten_search_entry, flatten_search_object,
-# normalize_to_list, parse_response_body, validate_api_response, handle_request_exception,
-# process_api_response) are in test_itsi_correlation_search.py to avoid duplication.
+# normalize_to_list) are in test_itsi_correlation_search.py to avoid duplication.
+# Tests for ItsiRequest (request, response parsing, error handling) are in test_itsi_request.py.
+from ansible_collections.splunk.itsi.plugins.module_utils.itsi_request import ItsiRequest
 from ansible_collections.splunk.itsi.plugins.modules.itsi_correlation_search_info import (
-    _send_request,
     get_correlation_search,
     get_correlation_search_by_name,
     list_correlation_searches,
@@ -72,176 +72,6 @@ SAMPLE_FLAT_RESPONSE = {
 }
 
 
-class TestSendRequest:
-    """Tests for _send_request helper function."""
-
-    def test_send_request_success_json_response(self):
-        """Test successful request with JSON response."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": json.dumps({"name": "test"}),
-            "headers": {"Content-Type": "application/json"},
-        }
-
-        status, data = _send_request(mock_conn, "GET", "/test/path")
-
-        assert status == 200
-        assert data["name"] == "test"
-        assert "_response_headers" in data
-
-    def test_send_request_with_params(self):
-        """Test request with query parameters."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": "{}",
-            "headers": {},
-        }
-
-        _send_request(mock_conn, "GET", "/test/path", params={"foo": "bar", "empty": ""})
-
-        # Verify the path includes only non-empty params
-        call_args = mock_conn.send_request.call_args
-        assert "foo=bar" in call_args[0][0]
-        assert "empty" not in call_args[0][0]
-
-    def test_send_request_with_existing_query_string(self):
-        """Test request with path that already has query string."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": "{}",
-            "headers": {},
-        }
-
-        _send_request(mock_conn, "GET", "/test/path?existing=param", params={"new": "value"})
-
-        call_args = mock_conn.send_request.call_args
-        assert "&new=value" in call_args[0][0]
-
-    def test_send_request_list_response(self):
-        """Test request with list response gets wrapped."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": json.dumps([{"name": "item1"}, {"name": "item2"}]),
-            "headers": {},
-        }
-
-        status, data = _send_request(mock_conn, "GET", "/test/path")
-
-        assert status == 200
-        assert "results" in data
-        assert len(data["results"]) == 2
-
-    def test_send_request_non_json_response(self):
-        """Test request with non-JSON response."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": "plain text response",
-            "headers": {},
-        }
-
-        status, data = _send_request(mock_conn, "GET", "/test/path")
-
-        assert status == 200
-        assert data["raw_response"] == "plain text response"
-
-    def test_send_request_empty_body(self):
-        """Test request with empty body."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 204,
-            "body": "",
-            "headers": {},
-        }
-
-        status, data = _send_request(mock_conn, "GET", "/test/path")
-
-        assert status == 204
-        assert "_response_headers" in data
-
-    def test_send_request_invalid_response_format(self):
-        """Test request with invalid response format."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = "invalid"
-
-        status, data = _send_request(mock_conn, "GET", "/test/path")
-
-        assert status == 500
-        assert "error" in data
-
-    def test_send_request_missing_status(self):
-        """Test request with missing status in response."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {"body": "{}"}
-
-        status, data = _send_request(mock_conn, "GET", "/test/path")
-
-        assert status == 500
-        assert "error" in data
-
-    def test_send_request_401_error(self):
-        """Test request with 401 authentication error."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.side_effect = Exception("401 Unauthorized")
-
-        status, data = _send_request(mock_conn, "GET", "/test/path")
-
-        assert status == 401
-        assert "Authentication failed" in data["error"]
-
-    def test_send_request_404_error(self):
-        """Test request with 404 not found error."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.side_effect = Exception("404 Not Found")
-
-        status, data = _send_request(mock_conn, "GET", "/test/path")
-
-        assert status == 404
-        assert "not found" in data["error"].lower()
-
-    def test_send_request_generic_exception(self):
-        """Test request with generic exception."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.side_effect = Exception("Connection timeout")
-
-        status, data = _send_request(mock_conn, "GET", "/test/path")
-
-        assert status == 500
-        assert "Connection timeout" in data["error"]
-
-    def test_send_request_method_uppercase(self):
-        """Test that method is converted to uppercase."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": "{}",
-            "headers": {},
-        }
-
-        _send_request(mock_conn, "get", "/test/path")
-
-        call_args = mock_conn.send_request.call_args
-        assert call_args[1]["method"] == "GET"
-
-    def test_send_request_scalar_json_response(self):
-        """Test request with scalar JSON response (not dict or list)."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": json.dumps("scalar string"),
-            "headers": {},
-        }
-
-        status, data = _send_request(mock_conn, "GET", "/test/path")
-
-        assert status == 200
-        assert data["raw_response"] == "scalar string"
-
-
 class TestGetCorrelationSearch:
     """Tests for get_correlation_search function."""
 
@@ -254,7 +84,7 @@ class TestGetCorrelationSearch:
             "headers": {"Content-Type": "application/json"},
         }
 
-        status, data = get_correlation_search(mock_conn, "test-search-id")
+        status, data = get_correlation_search(ItsiRequest(mock_conn), "test-search-id")
 
         assert status == 200
         assert data["search"] == "index=main | head 1"
@@ -269,7 +99,7 @@ class TestGetCorrelationSearch:
             "headers": {},
         }
 
-        get_correlation_search(mock_conn, "test-id", fields="name,disabled")
+        get_correlation_search(ItsiRequest(mock_conn), "test-id", fields="name,disabled")
 
         call_args = mock_conn.send_request.call_args
         assert "fields=name%2Cdisabled" in call_args[0][0]
@@ -283,7 +113,7 @@ class TestGetCorrelationSearch:
             "headers": {},
         }
 
-        get_correlation_search(mock_conn, "test-id", fields=["name", "disabled"])
+        get_correlation_search(ItsiRequest(mock_conn), "test-id", fields=["name", "disabled"])
 
         call_args = mock_conn.send_request.call_args
         assert "fields=name%2Cdisabled" in call_args[0][0]
@@ -297,7 +127,7 @@ class TestGetCorrelationSearch:
             "headers": {},
         }
 
-        status, data = get_correlation_search(mock_conn, "nonexistent")
+        status, data = get_correlation_search(ItsiRequest(mock_conn), "nonexistent")
 
         assert status == 404
 
@@ -310,7 +140,7 @@ class TestGetCorrelationSearch:
             "headers": {"X-Custom": "header"},
         }
 
-        status, data = get_correlation_search(mock_conn, "test-id")
+        status, data = get_correlation_search(ItsiRequest(mock_conn), "test-id")
 
         assert "_response_headers" in data
 
@@ -327,7 +157,7 @@ class TestGetCorrelationSearchByName:
             "headers": {},
         }
 
-        status, data = get_correlation_search_by_name(mock_conn, "Test Search")
+        status, data = get_correlation_search_by_name(ItsiRequest(mock_conn), "Test Search")
 
         assert status == 200
         # Verify URL encoding uses %20 for spaces
@@ -343,7 +173,7 @@ class TestGetCorrelationSearchByName:
             "headers": {},
         }
 
-        get_correlation_search_by_name(mock_conn, "Test", fields="search,disabled")
+        get_correlation_search_by_name(ItsiRequest(mock_conn), "Test", fields="search,disabled")
 
         call_args = mock_conn.send_request.call_args
         assert "fields=search%2Cdisabled" in call_args[0][0]
@@ -357,7 +187,7 @@ class TestGetCorrelationSearchByName:
             "headers": {},
         }
 
-        get_correlation_search_by_name(mock_conn, "Test", fields=["search", "disabled"])
+        get_correlation_search_by_name(ItsiRequest(mock_conn), "Test", fields=["search", "disabled"])
 
         call_args = mock_conn.send_request.call_args
         assert "fields=search%2Cdisabled" in call_args[0][0]
@@ -371,7 +201,7 @@ class TestGetCorrelationSearchByName:
             "headers": {},
         }
 
-        status, data = get_correlation_search_by_name(mock_conn, "Nonexistent")
+        status, data = get_correlation_search_by_name(ItsiRequest(mock_conn), "Nonexistent")
 
         assert status == 404
 
@@ -388,7 +218,7 @@ class TestListCorrelationSearches:
             "headers": {},
         }
 
-        status, data = list_correlation_searches(mock_conn)
+        status, data = list_correlation_searches(ItsiRequest(mock_conn))
 
         assert status == 200
         assert "correlation_searches" in data
@@ -403,7 +233,7 @@ class TestListCorrelationSearches:
             "headers": {},
         }
 
-        list_correlation_searches(mock_conn, fields="name,search")
+        list_correlation_searches(ItsiRequest(mock_conn), fields="name,search")
 
         call_args = mock_conn.send_request.call_args
         assert "fields=name%2Csearch" in call_args[0][0]
@@ -417,7 +247,7 @@ class TestListCorrelationSearches:
             "headers": {},
         }
 
-        list_correlation_searches(mock_conn, fields=("name", "search"))
+        list_correlation_searches(ItsiRequest(mock_conn), fields=("name", "search"))
 
         call_args = mock_conn.send_request.call_args
         assert "fields=name%2Csearch" in call_args[0][0]
@@ -431,7 +261,7 @@ class TestListCorrelationSearches:
             "headers": {},
         }
 
-        list_correlation_searches(mock_conn, filter_data='{"disabled": "0"}')
+        list_correlation_searches(ItsiRequest(mock_conn), filter_data='{"disabled": "0"}')
 
         call_args = mock_conn.send_request.call_args
         assert "filter_data" in call_args[0][0]
@@ -445,7 +275,7 @@ class TestListCorrelationSearches:
             "headers": {},
         }
 
-        list_correlation_searches(mock_conn, count=10)
+        list_correlation_searches(ItsiRequest(mock_conn), count=10)
 
         call_args = mock_conn.send_request.call_args
         assert "count=10" in call_args[0][0]
@@ -459,7 +289,7 @@ class TestListCorrelationSearches:
             "headers": {},
         }
 
-        status, data = list_correlation_searches(mock_conn)
+        status, data = list_correlation_searches(ItsiRequest(mock_conn))
 
         assert status == 500
 
@@ -476,7 +306,7 @@ class TestListCorrelationSearches:
             "headers": {},
         }
 
-        status, data = list_correlation_searches(mock_conn)
+        status, data = list_correlation_searches(ItsiRequest(mock_conn))
 
         assert status == 200
         assert len(data["correlation_searches"]) == 2
