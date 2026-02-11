@@ -459,37 +459,43 @@ class TestGetByKey:
     def test_get_by_key_success(self):
         """Test successful get by key."""
         mock_conn = MagicMock()
+        mock_module = MagicMock()
         mock_conn.send_request.return_value = {
             "status": 200,
             "body": json.dumps(SAMPLE_SERVICE),
         }
 
-        status, body = _get_by_key(ItsiRequest(mock_conn), "a2961217-9728-4e9f-b67b-15bf4a40ad7c")
+        doc = _get_by_key(
+            ItsiRequest(mock_conn, mock_module),
+            "a2961217-9728-4e9f-b67b-15bf4a40ad7c",
+        )
 
-        assert status == 200
-        assert body["title"] == "api-gateway"
+        assert doc is not None
+        assert doc["title"] == "api-gateway"
 
     def test_get_by_key_not_found(self):
-        """Test get by key not found."""
+        """Test get by key not found (404 returns None)."""
         mock_conn = MagicMock()
+        mock_module = MagicMock()
         mock_conn.send_request.return_value = {
             "status": 404,
             "body": json.dumps({"error": "Not found"}),
         }
 
-        status, body = _get_by_key(ItsiRequest(mock_conn), "nonexistent")
+        doc = _get_by_key(ItsiRequest(mock_conn, mock_module), "nonexistent")
 
-        assert status == 404
+        assert doc is None
 
     def test_get_by_key_with_fields_string(self):
         """Test get by key with fields as string."""
         mock_conn = MagicMock()
+        mock_module = MagicMock()
         mock_conn.send_request.return_value = {
             "status": 200,
             "body": json.dumps({"_key": "test", "title": "svc"}),
         }
 
-        _get_by_key(ItsiRequest(mock_conn), "test", fields="_key,title")
+        _get_by_key(ItsiRequest(mock_conn, mock_module), "test", fields="_key,title")
 
         call_args = mock_conn.send_request.call_args
         assert "fields=_key%2Ctitle" in call_args[0][0]
@@ -497,12 +503,13 @@ class TestGetByKey:
     def test_get_by_key_with_fields_list(self):
         """Test get by key with fields as list."""
         mock_conn = MagicMock()
+        mock_module = MagicMock()
         mock_conn.send_request.return_value = {
             "status": 200,
             "body": json.dumps({"_key": "test"}),
         }
 
-        _get_by_key(ItsiRequest(mock_conn), "test", fields=["_key", "title"])
+        _get_by_key(ItsiRequest(mock_conn, mock_module), "test", fields=["_key", "title"])
 
         call_args = mock_conn.send_request.call_args
         assert "fields=_key%2Ctitle" in call_args[0][0]
@@ -514,34 +521,34 @@ class TestFindByTitle:
     def test_find_by_title_found(self):
         """Test find by title when service exists."""
         mock_conn = MagicMock()
+        mock_module = MagicMock()
         mock_conn.send_request.return_value = {
             "status": 200,
             "body": json.dumps([SAMPLE_SERVICE]),
         }
 
-        status, doc, err = _find_by_title(ItsiRequest(mock_conn), "api-gateway")
+        doc = _find_by_title(ItsiRequest(mock_conn, mock_module), "api-gateway")
 
-        assert status == 200
+        assert doc is not None
         assert doc["title"] == "api-gateway"
-        assert err is None
 
     def test_find_by_title_not_found(self):
         """Test find by title when service doesn't exist."""
         mock_conn = MagicMock()
+        mock_module = MagicMock()
         mock_conn.send_request.return_value = {
             "status": 200,
             "body": json.dumps([]),
         }
 
-        status, doc, err = _find_by_title(ItsiRequest(mock_conn), "nonexistent")
+        doc = _find_by_title(ItsiRequest(mock_conn, mock_module), "nonexistent")
 
-        assert status == 200
         assert doc is None
-        assert err is None
 
     def test_find_by_title_filters_exact_match(self):
         """Test find by title filters for exact match."""
         mock_conn = MagicMock()
+        mock_module = MagicMock()
         # API returns multiple but only one matches exactly
         mock_conn.send_request.return_value = {
             "status": 200,
@@ -553,19 +560,21 @@ class TestFindByTitle:
             ),
         }
 
-        status, doc, err = _find_by_title(ItsiRequest(mock_conn), "api-gateway")
+        doc = _find_by_title(ItsiRequest(mock_conn, mock_module), "api-gateway")
 
+        assert doc is not None
         assert doc["_key"] == "1"
 
     def test_find_by_title_non_list_response(self):
         """Test find by title with non-list response."""
         mock_conn = MagicMock()
+        mock_module = MagicMock()
         mock_conn.send_request.return_value = {
             "status": 200,
             "body": json.dumps({"error": "unexpected"}),
         }
 
-        status, doc, err = _find_by_title(ItsiRequest(mock_conn), "test")
+        doc = _find_by_title(ItsiRequest(mock_conn, mock_module), "test")
 
         assert doc is None
 
@@ -576,14 +585,18 @@ class TestCreate:
     def test_create_success(self):
         """Test successful create."""
         mock_conn = MagicMock()
+        mock_module = MagicMock()
         mock_conn.send_request.return_value = {
             "status": 200,
             "body": json.dumps({"_key": "new-uuid"}),
         }
 
-        status, body = _create(ItsiRequest(mock_conn), {"title": "new-service"})
+        body = _create(
+            ItsiRequest(mock_conn, mock_module),
+            {"title": "new-service"},
+        )
 
-        assert status == 200
+        assert body is not None
         assert body["_key"] == "new-uuid"
         call_args = mock_conn.send_request.call_args
         # Module calls: conn.send_request(path, method=method, body=body)
@@ -592,6 +605,7 @@ class TestCreate:
     def test_create_with_full_payload(self):
         """Test create with full payload."""
         mock_conn = MagicMock()
+        mock_module = MagicMock()
         mock_conn.send_request.return_value = {
             "status": 200,
             "body": json.dumps({"_key": "new"}),
@@ -603,7 +617,7 @@ class TestCreate:
             "description": "Full description",
             "service_tags": {"tags": ["tag1"]},
         }
-        _create(ItsiRequest(mock_conn), payload)
+        _create(ItsiRequest(mock_conn, mock_module), payload)
 
         call_args = mock_conn.send_request.call_args
         # Module calls: conn.send_request(path, method=method, body=body)
@@ -618,12 +632,13 @@ class TestUpdate:
     def test_update_partial(self):
         """Test partial update."""
         mock_conn = MagicMock()
+        mock_module = MagicMock()
         mock_conn.send_request.return_value = {
             "status": 200,
             "body": json.dumps({"_key": "test"}),
         }
 
-        _update(ItsiRequest(mock_conn), "test-key", {"enabled": 0})
+        _update(ItsiRequest(mock_conn, mock_module), "test-key", {"enabled": 0})
 
         call_args = mock_conn.send_request.call_args
         # Module calls: conn.send_request(path, method=method, body=body)
@@ -634,6 +649,7 @@ class TestUpdate:
     def test_update_with_current_doc(self):
         """Test update merges with current doc."""
         mock_conn = MagicMock()
+        mock_module = MagicMock()
         mock_conn.send_request.return_value = {
             "status": 200,
             "body": json.dumps({"_key": "test"}),
@@ -641,7 +657,7 @@ class TestUpdate:
 
         current = {"title": "svc", "enabled": 1, "description": "old"}
         patch = {"description": "new"}
-        _update(ItsiRequest(mock_conn), "test-key", patch, current_doc=current)
+        _update(ItsiRequest(mock_conn, mock_module), "test-key", patch, current_doc=current)
 
         call_args = mock_conn.send_request.call_args
         # Module calls: conn.send_request(path, method=method, body=body)
@@ -654,6 +670,7 @@ class TestUpdate:
     def test_update_removes_system_fields(self):
         """Test update removes system fields from payload."""
         mock_conn = MagicMock()
+        mock_module = MagicMock()
         mock_conn.send_request.return_value = {
             "status": 200,
             "body": "{}",
@@ -666,7 +683,7 @@ class TestUpdate:
             "kpis": [{"id": "kpi1"}],
             "permissions": {"read": "*"},
         }
-        _update(ItsiRequest(mock_conn), "key", {"title": "svc"}, current_doc=current)
+        _update(ItsiRequest(mock_conn, mock_module), "key", {"title": "svc"}, current_doc=current)
 
         call_args = mock_conn.send_request.call_args
         # Module calls: conn.send_request(path, method=method, body=body)
@@ -683,14 +700,16 @@ class TestDelete:
     def test_delete_success(self):
         """Test successful delete."""
         mock_conn = MagicMock()
+        mock_module = MagicMock()
         mock_conn.send_request.return_value = {
             "status": 200,
             "body": "",
         }
 
-        status, body = _delete(ItsiRequest(mock_conn), "test-key")
+        body = _delete(ItsiRequest(mock_conn, mock_module), "test-key")
 
-        assert status == 200
+        # Empty body returns {} from ItsiRequest
+        assert body is not None
         call_args = mock_conn.send_request.call_args
         # Module calls: conn.send_request(path, method=method, body=body)
         assert call_args.kwargs["method"] == "DELETE"
@@ -707,7 +726,7 @@ class TestResolveBaseServiceTemplateId:
         result = {}
 
         resolved = _resolve_base_service_template_id(
-            client=ItsiRequest(mock_conn),
+            client=ItsiRequest(mock_conn, mock_module),
             template_ref="a2961217-9728-4e9f-b67b-15bf4a40ad7c",
             module=mock_module,
             result=result,
@@ -727,7 +746,7 @@ class TestResolveBaseServiceTemplateId:
         result = {}
 
         resolved = _resolve_base_service_template_id(
-            client=ItsiRequest(mock_conn),
+            client=ItsiRequest(mock_conn, mock_module),
             template_ref="My Service Template",
             module=mock_module,
             result=result,
@@ -749,7 +768,7 @@ class TestResolveBaseServiceTemplateId:
 
         with pytest.raises(AnsibleFailJson):
             _resolve_base_service_template_id(
-                client=ItsiRequest(mock_conn),
+                client=ItsiRequest(mock_conn, mock_module),
                 template_ref="Nonexistent Template",
                 module=mock_module,
                 result=result,
@@ -777,7 +796,7 @@ class TestResolveBaseServiceTemplateId:
 
         with pytest.raises(AnsibleFailJson):
             _resolve_base_service_template_id(
-                client=ItsiRequest(mock_conn),
+                client=ItsiRequest(mock_conn, mock_module),
                 template_ref="Duplicate Template",
                 module=mock_module,
                 result=result,
@@ -798,18 +817,15 @@ class TestDiscoverCurrent:
             "body": json.dumps(SAMPLE_SERVICE),
         }
         mock_module = MagicMock()
-        result = {}
 
         doc = _discover_current(
-            client=ItsiRequest(mock_conn),
+            client=ItsiRequest(mock_conn, mock_module),
             key="a2961217-9728-4e9f-b67b-15bf4a40ad7c",
             name=None,
-            module=mock_module,
-            result=result,
         )
 
+        assert doc is not None
         assert doc["title"] == "api-gateway"
-        assert result["status"] == 200
 
     def test_discover_by_key_not_found(self):
         """Test discover by key when service doesn't exist."""
@@ -819,14 +835,11 @@ class TestDiscoverCurrent:
             "body": json.dumps({"error": "Not found"}),
         }
         mock_module = MagicMock()
-        result = {}
 
         doc = _discover_current(
-            client=ItsiRequest(mock_conn),
+            client=ItsiRequest(mock_conn, mock_module),
             key="nonexistent",
             name=None,
-            module=mock_module,
-            result=result,
         )
 
         assert doc is None
@@ -841,16 +854,14 @@ class TestDiscoverCurrent:
             {"status": 200, "body": json.dumps(SAMPLE_SERVICE_FULL)},
         ]
         mock_module = MagicMock()
-        result = {}
 
         doc = _discover_current(
-            client=ItsiRequest(mock_conn),
+            client=ItsiRequest(mock_conn, mock_module),
             key=None,
             name="api-gateway",
-            module=mock_module,
-            result=result,
         )
 
+        assert doc is not None
         assert doc["title"] == "api-gateway"
         # Full document should have entity_rules
         assert "entity_rules" in doc
@@ -863,14 +874,11 @@ class TestDiscoverCurrent:
             "body": json.dumps([]),
         }
         mock_module = MagicMock()
-        result = {}
 
         doc = _discover_current(
-            client=ItsiRequest(mock_conn),
+            client=ItsiRequest(mock_conn, mock_module),
             key=None,
             name="nonexistent",
-            module=mock_module,
-            result=result,
         )
 
         assert doc is None

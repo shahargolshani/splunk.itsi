@@ -105,7 +105,7 @@ Parameters
                 <td>
                         <div>The aggregation policy ID/key (unique identifier).</div>
                         <div>Provides direct lookup by unique ID.</div>
-                        <div>Returns a single policy in <code>aggregation_policy</code>.</div>
+                        <div>Returns a single-element list in <code>aggregation_policies</code>.</div>
                 </td>
             </tr>
             <tr>
@@ -123,7 +123,6 @@ Parameters
                         <div>The title/name of the aggregation policy to search for.</div>
                         <div>Note that multiple policies can have the same title.</div>
                         <div>Returns all matching policies in <code>aggregation_policies</code> list.</div>
-                        <div>If exactly one match, <code>aggregation_policy</code> is also set for convenience.</div>
                 </td>
             </tr>
     </table>
@@ -135,7 +134,7 @@ Notes
 
 .. note::
    - This module retrieves ITSI aggregation policies using the event_management_interface/notable_event_aggregation_policy endpoint.
-   - When querying by ``policy_id``, returns a single policy in ``aggregation_policy``.
+   - When querying by ``policy_id``, returns a single-element list in ``aggregation_policies``.
    - When querying by ``title``, returns all matching policies in ``aggregation_policies`` list since titles are not unique.
    - Without any identifier, lists all aggregation policies.
    - This is a read-only module and will never modify policies.
@@ -153,12 +152,12 @@ Examples
       register: all_policies
     # Access: all_policies.aggregation_policies
 
-    # Get aggregation policy by ID (returns single policy)
+    # Get aggregation policy by ID (returns single-element list)
     - name: Get aggregation policy by ID
       splunk.itsi.itsi_aggregation_policy_info:
         policy_id: "itsi_default_policy"
       register: policy_by_id
-    # Access: policy_by_id.aggregation_policy
+    # Access: policy_by_id.aggregation_policies[0]
 
     # Get aggregation policies by title (may return multiple)
     - name: Get all aggregation policies with a specific title
@@ -166,7 +165,6 @@ Examples
         title: "Default Policy"
       register: policies_by_title
     # Access: policies_by_title.aggregation_policies (list of all matching)
-    # If exactly one match: policies_by_title.aggregation_policy also available
 
     # Get aggregation policy with specific fields only
     - name: Get aggregation policy with field projection
@@ -209,31 +207,15 @@ Common return values are documented `here <https://docs.ansible.com/ansible/late
                     <a class="ansibleOptionLink" href="#return-" title="Permalink to this return value"></a>
                     <div style="font-size: small">
                       <span style="color: purple">list</span>
+                       / <span style="color: purple">elements=dictionary</span>
                     </div>
                 </td>
-                <td>when listing policies or querying by title</td>
+                <td>always</td>
                 <td>
-                            <div>List of aggregation policies</div>
+                            <div>List of aggregation policies matching the query</div>
                     <br/>
                         <div style="font-size: smaller"><b>Sample:</b></div>
                         <div style="font-size: smaller; color: blue; word-wrap: break-word; word-break: break-all;">[{&#x27;title&#x27;: &#x27;Policy 1&#x27;, &#x27;_key&#x27;: &#x27;policy1&#x27;}, {&#x27;title&#x27;: &#x27;Policy 2&#x27;, &#x27;_key&#x27;: &#x27;policy2&#x27;}]</div>
-                </td>
-            </tr>
-            <tr>
-                <td colspan="1">
-                    <div class="ansibleOptionAnchor" id="return-"></div>
-                    <b>aggregation_policy</b>
-                    <a class="ansibleOptionLink" href="#return-" title="Permalink to this return value"></a>
-                    <div style="font-size: small">
-                      <span style="color: purple">dictionary</span>
-                    </div>
-                </td>
-                <td>when querying by policy_id, or when exactly one policy matches the title</td>
-                <td>
-                            <div>The aggregation policy data (single policy query by ID, or single match by title)</div>
-                    <br/>
-                        <div style="font-size: smaller"><b>Sample:</b></div>
-                        <div style="font-size: smaller; color: blue; word-wrap: break-word; word-break: break-all;">{&#x27;title&#x27;: &#x27;Default Policy&#x27;, &#x27;description&#x27;: &#x27;Default aggregation policy&#x27;, &#x27;disabled&#x27;: 0, &#x27;_key&#x27;: &#x27;itsi_default_policy&#x27;}</div>
                 </td>
             </tr>
             <tr>

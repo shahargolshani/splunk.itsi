@@ -22,7 +22,7 @@ options:
     description:
       - The aggregation policy ID/key (unique identifier).
       - Provides direct lookup by unique ID.
-      - Returns a single policy in C(aggregation_policy).
+      - Returns a single-element list in C(aggregation_policies).
     type: str
     required: false
   title:
@@ -30,7 +30,6 @@ options:
       - The title/name of the aggregation policy to search for.
       - Note that multiple policies can have the same title.
       - Returns all matching policies in C(aggregation_policies) list.
-      - If exactly one match, C(aggregation_policy) is also set for convenience.
     type: str
     required: false
   fields:
@@ -58,7 +57,7 @@ requirements:
 
 notes:
   - This module retrieves ITSI aggregation policies using the event_management_interface/notable_event_aggregation_policy endpoint.
-  - When querying by C(policy_id), returns a single policy in C(aggregation_policy).
+  - When querying by C(policy_id), returns a single-element list in C(aggregation_policies).
   - When querying by C(title), returns all matching policies in C(aggregation_policies) list since titles are not unique.
   - Without any identifier, lists all aggregation policies.
   - This is a read-only module and will never modify policies.
@@ -71,12 +70,12 @@ EXAMPLES = r"""
   register: all_policies
 # Access: all_policies.aggregation_policies
 
-# Get aggregation policy by ID (returns single policy)
+# Get aggregation policy by ID (returns single-element list)
 - name: Get aggregation policy by ID
   splunk.itsi.itsi_aggregation_policy_info:
     policy_id: "itsi_default_policy"
   register: policy_by_id
-# Access: policy_by_id.aggregation_policy
+# Access: policy_by_id.aggregation_policies[0]
 
 # Get aggregation policies by title (may return multiple)
 - name: Get all aggregation policies with a specific title
@@ -84,7 +83,6 @@ EXAMPLES = r"""
     title: "Default Policy"
   register: policies_by_title
 # Access: policies_by_title.aggregation_policies (list of all matching)
-# If exactly one match: policies_by_title.aggregation_policy also available
 
 # Get aggregation policy with specific fields only
 - name: Get aggregation policy with field projection
@@ -108,19 +106,11 @@ EXAMPLES = r"""
 """
 
 RETURN = r"""
-aggregation_policy:
-  description: The aggregation policy data (single policy query by ID, or single match by title)
-  type: dict
-  returned: when querying by policy_id, or when exactly one policy matches the title
-  sample:
-    title: "Default Policy"
-    description: "Default aggregation policy"
-    disabled: 0
-    _key: "itsi_default_policy"
 aggregation_policies:
-  description: List of aggregation policies
+  description: List of aggregation policies matching the query
   type: list
-  returned: when listing policies or querying by title
+  elements: dict
+  returned: always
   sample:
     - title: "Policy 1"
       _key: "policy1"
@@ -139,68 +129,69 @@ headers:
 """
 
 # Ansible imports
+from typing import Any, Optional, Tuple
+
 from ansible.module_utils.basic import AnsibleModule
 from ansible.module_utils.connection import Connection
-
-# Import shared utilities
-from ansible_collections.splunk.itsi.plugins.module_utils.itsi_request import ItsiRequest
-from ansible_collections.splunk.itsi.plugins.module_utils.itsi_utils import (
-    get_aggregation_policies_by_title,
+from ansible_collections.splunk.itsi.plugins.module_utils.aggregation_policy_utils import (
     get_aggregation_policy_by_id,
     list_aggregation_policies,
 )
 
+# Import shared utilities
+from ansible_collections.splunk.itsi.plugins.module_utils.itsi_request import ItsiRequest
 
-def _normalize_response_data(data):
-    """Ensure data is a dict with expected keys for safe access."""
-    if isinstance(data, dict):
-        return data
-    return {"aggregation_policies": [], "_response_headers": {}}
+
+def get_aggregation_policies_by_title(
+    client: Any,
+    title: str,
+    fields: Optional[str] = None,
+) -> Optional[Tuple[int, dict, Any]]:
+    """Get aggregation policies by title (client-side filtering).
+
+    Returns:
+        ``(status, headers, {"aggregation_policies": [...]})`` or ``None``.
+    """
+    result = list_aggregation_policies(client, fields=fields)
+    if result is None:
+        return None
+    status, headers, body = result
+    all_policies = body.get("aggregation_policies", [])
+    matching = [p for p in all_policies if isinstance(p, dict) and p.get("title") == title]
+    return status, headers, {"aggregation_policies": matching}
 
 
 def _query_by_policy_id(client, policy_id, fields):
     """Query a specific aggregation policy by ID."""
-    status, data = get_aggregation_policy_by_id(client, policy_id, fields)
-    headers = data.get("_response_headers", {}) if isinstance(data, dict) else {}
-
-    result = {"status": status, "headers": headers}
-    result["aggregation_policy"] = data if status == 200 else None
-    return result
+    api_result = get_aggregation_policy_by_id(client, policy_id, fields)
+    if api_result is None:
+        return {"status": 0, "headers": {}, "body": {}, "aggregation_policies": []}
+    status, headers, body = api_result
+    return {"status": status, "headers": headers, "body": body, "aggregation_policies": [body]}
 
 
 def _query_by_title(client, title, fields):
     """Query aggregation policies by title (may return multiple)."""
-    status, data = get_aggregation_policies_by_title(client, title, fields)
-    data = _normalize_response_data(data)
-    policies = data.get("aggregation_policies", [])
-
-    result = {
-        "status": status,
-        "headers": data.get("_response_headers", {}),
-        "aggregation_policies": policies,
-    }
-
-    # For convenience, also set aggregation_policy if exactly one or zero results
-    result["aggregation_policy"] = policies[0] if len(policies) == 1 else None
-    return result
+    api_result = get_aggregation_policies_by_title(client, title, fields)
+    if api_result is None:
+        return {"status": 0, "headers": {}, "body": {}, "aggregation_policies": []}
+    status, headers, body = api_result
+    policies = body.get("aggregation_policies", []) if isinstance(body, dict) else []
+    return {"status": status, "headers": headers, "body": body, "aggregation_policies": policies}
 
 
 def _list_all_policies(client, fields, filter_data, limit):
     """List all aggregation policies."""
-    status, data = list_aggregation_policies(client, fields, filter_data, limit)
-    data = _normalize_response_data(data)
-
-    return {
-        "status": status,
-        "headers": data.get("_response_headers", {}),
-        "aggregation_policies": data.get("aggregation_policies", []),
-    }
+    api_result = list_aggregation_policies(client, fields, filter_data, limit)
+    if api_result is None:
+        return {"status": 0, "headers": {}, "body": {}, "aggregation_policies": []}
+    status, headers, body = api_result
+    policies = body.get("aggregation_policies", []) if isinstance(body, dict) else []
+    return {"status": status, "headers": headers, "body": body, "aggregation_policies": policies}
 
 
 def main():
     """Main module function."""
-
-    # Define module arguments
     module_args = dict(
         policy_id=dict(type="str", required=False),
         title=dict(type="str", required=False),
@@ -209,37 +200,28 @@ def main():
         limit=dict(type="int", required=False),
     )
 
-    # Initialize module
     module = AnsibleModule(
         argument_spec=module_args,
         supports_check_mode=True,
     )
 
-    try:
-        client = ItsiRequest(Connection(module._socket_path))
-        policy_id = module.params.get("policy_id")
-        title = module.params.get("title")
-        fields = module.params.get("fields")
+    if not getattr(module, "_socket_path", None):
+        module.fail_json(msg="Use ansible_connection=httpapi and ansible_network_os=splunk.itsi.itsi_api_client")
 
-        # Route to appropriate query function
-        if policy_id:
-            result = _query_by_policy_id(client, policy_id, fields)
-        elif title:
-            result = _query_by_title(client, title, fields)
-        else:
-            filter_data = module.params.get("filter_data")
-            limit = module.params.get("limit")
-            result = _list_all_policies(client, fields, filter_data, limit)
+    client = ItsiRequest(Connection(module._socket_path), module)
+    policy_id = module.params.get("policy_id")
+    title = module.params.get("title")
+    fields = module.params.get("fields")
 
-        result["changed"] = False
-        module.exit_json(**result)
+    if policy_id:
+        result = _query_by_policy_id(client, policy_id, fields)
+    elif title:
+        result = _query_by_title(client, title, fields)
+    else:
+        result = _list_all_policies(client, fields, module.params.get("filter_data"), module.params.get("limit"))
 
-    except Exception as e:
-        module.fail_json(
-            msg=f"Exception occurred: {str(e)}",
-            policy_id=module.params.get("policy_id"),
-            title=module.params.get("title"),
-        )
+    result["changed"] = False
+    module.exit_json(**result)
 
 
 if __name__ == "__main__":

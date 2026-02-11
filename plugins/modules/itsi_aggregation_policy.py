@@ -156,12 +156,12 @@ EXAMPLES = r"""
       items: []
     state: present
   register: create_result
-# Note: create_result.aggregation_policy._key contains the generated policy_id
+# Note: create_result.aggregation_policies[0]._key contains the generated policy_id
 
 # Update existing aggregation policy (policy_id required, title optional)
 - name: Update aggregation policy settings
   splunk.itsi.itsi_aggregation_policy:
-    policy_id: "{{ create_result.aggregation_policy._key }}"
+    policy_id: "{{ create_result.aggregation_policies[0]._key }}"
     group_severity: "high"
     disabled: false
     state: present
@@ -181,7 +181,7 @@ EXAMPLES = r"""
 # Delete aggregation policy (policy_id required)
 - name: Remove aggregation policy
   splunk.itsi.itsi_aggregation_policy:
-    policy_id: "{{ create_result.aggregation_policy._key }}"
+    policy_id: "{{ create_result.aggregation_policies[0]._key }}"
     state: absent
   register: delete_result
 
@@ -222,15 +222,16 @@ operation:
   type: str
   returned: always
   sample: "create"
-aggregation_policy:
-  description: The aggregation policy data after the operation
-  type: dict
+aggregation_policies:
+  description: List containing the aggregation policy data after the operation
+  type: list
+  elements: dict
   returned: when operation succeeded
   sample:
-    title: "Default Policy"
-    description: "Default aggregation policy"
-    disabled: 0
-    _key: "itsi_default_policy"
+    - title: "Default Policy"
+      description: "Default aggregation policy"
+      disabled: 0
+      _key: "itsi_default_policy"
 diff:
   description: Differences between current and desired state (update operations)
   type: dict
@@ -247,14 +248,14 @@ from urllib.parse import quote_plus
 # Ansible imports
 from ansible.module_utils.basic import AnsibleModule
 from ansible.module_utils.connection import Connection
-
-# Import shared utilities
-from ansible_collections.splunk.itsi.plugins.module_utils.itsi_request import ItsiRequest
-from ansible_collections.splunk.itsi.plugins.module_utils.itsi_utils import (
+from ansible_collections.splunk.itsi.plugins.module_utils.aggregation_policy_utils import (
     BASE_AGGREGATION_POLICY_ENDPOINT,
     flatten_policy_object,
     get_aggregation_policy_by_id,
 )
+
+# Import shared utilities
+from ansible_collections.splunk.itsi.plugins.module_utils.itsi_request import ItsiRequest
 
 
 def _normalize_disabled_value(value):
@@ -330,17 +331,7 @@ def _diff_canonical(desired_canon, current_canon):
 
 
 def create_aggregation_policy(client, policy_data):
-    """
-    Create a new aggregation policy via EMI.
-
-    Args:
-        client: ItsiRequest instance
-        policy_data: Dictionary containing policy configuration
-
-    Returns:
-        tuple: (status_code, response_data)
-    """
-    # Ensure required fields are present with defaults
+    """Create a new aggregation policy via EMI."""
     payload = {
         "title": policy_data.get("title", "Unnamed Policy"),
         "filter_criteria": policy_data.get("filter_criteria", {"condition": "AND", "items": []}),
@@ -348,38 +339,21 @@ def create_aggregation_policy(client, policy_data):
         "group_severity": policy_data.get("group_severity", "normal"),
         "rules": policy_data.get("rules", []),
     }
-
-    # Add any additional fields from policy_data
     for key, value in policy_data.items():
         if key not in payload:
             payload[key] = value
-
     params = {"output_mode": "json"}
-    status, data = client.post(BASE_AGGREGATION_POLICY_ENDPOINT, params=params, payload=payload)
-    return status, data
+    return client.post(BASE_AGGREGATION_POLICY_ENDPOINT, params=params, payload=payload)
 
 
-def update_aggregation_policy(client, policy_id, update_data):
-    """
-    Update aggregation policy via EMI with is_partial_data=1.
+def update_aggregation_policy(client, policy_id, update_data, current_data):
+    """Update aggregation policy via EMI with is_partial_data=1.
 
     Args:
-        client: ItsiRequest instance
-        policy_id: Policy ID (_key) - must use ID for updates
-        update_data: Dictionary containing fields to update
-
-    Returns:
-        tuple: (status_code, response_data)
+        current_data: Current policy body (avoids a redundant GET).
     """
-    # First get current policy to ensure all required fields are present
-    current_status, current_data = get_aggregation_policy_by_id(client, policy_id)
-    if current_status != 200:
-        return current_status, current_data
-
     path = f"{BASE_AGGREGATION_POLICY_ENDPOINT}/{quote_plus(policy_id)}"
     params = {"output_mode": "json", "is_partial_data": "1"}
-
-    # Build payload with required fields - EMI requires these even for partial updates
     payload = {
         "title": update_data.get("title", current_data.get("title")),
         "filter_criteria": update_data.get("filter_criteria", current_data.get("filter_criteria", {"condition": "AND", "items": []})),
@@ -387,119 +361,34 @@ def update_aggregation_policy(client, policy_id, update_data):
         "group_severity": update_data.get("group_severity", current_data.get("group_severity", "normal")),
         "rules": update_data.get("rules", current_data.get("rules", [])),
     }
-
-    # Add any additional fields from update_data
     for key, value in update_data.items():
         if key not in payload:
             payload[key] = value
-
     return client.post(path, params=params, payload=payload)
 
 
 def delete_aggregation_policy(client, policy_id):
-    """
-    Delete an aggregation policy by ID.
-
-    Args:
-        client: ItsiRequest instance
-        policy_id: Policy ID (_key) - must use ID for deletion
-
-    Returns:
-        tuple: (status_code, response_data)
-    """
+    """Delete an aggregation policy by ID."""
     path = f"{BASE_AGGREGATION_POLICY_ENDPOINT}/{quote_plus(policy_id)}"
     params = {"output_mode": "json"}
-    status, data = client.delete(path, params=params)
-    return status, data
+    return client.delete(path, params=params)
 
 
-def _get_headers(data):
-    """Extract headers from response data."""
-    if isinstance(data, dict):
-        return data.get("_response_headers", {})
-    return {}
+# ------------------------------------------------------------------
+# Result helper
+# ------------------------------------------------------------------
 
 
-def _get_body(data):
-    """Convert data to JSON string for response body."""
-    if isinstance(data, (dict, list)):
-        return json.dumps(data)
-    return str(data)
+def _result(changed, status, headers, body, **extra):
+    """Build a unified result dict."""
+    r = {"changed": changed, "status": status, "headers": headers, "body": body}
+    r.update(extra)
+    return r
 
 
-def _build_result(changed, status, data, operation, **extra):
-    """Build a result dictionary with common fields."""
-    result = {
-        "changed": changed,
-        "status": status,
-        "headers": _get_headers(data),
-        "body": _get_body(data),
-        "operation": operation,
-    }
-    result.update(extra)
-    return result
-
-
-def _handle_policy_update(client, policy_id, current_data, desired_data):
-    """Handle update of existing policy, checking for changes."""
-    current_canon = _canonicalize_policy(current_data)
-    desired_canon = _canonicalize_policy(desired_data)
-    diff = _diff_canonical(desired_canon, current_canon)
-
-    if not diff:
-        # No update needed - idempotent
-        return _build_result(False, 200, current_data, "no_change", aggregation_policy=current_data)
-
-    # Update needed
-    status, data = update_aggregation_policy(client, policy_id, desired_canon)
-    result = _build_result(True, status, data, "update", diff=diff)
-    if status == 200:
-        result["aggregation_policy"] = data
-    return result
-
-
-def _handle_policy_not_found(policy_id):
-    """Handle case when policy_id is provided but policy not found."""
-    error_data = {"error": f"Policy with ID '{policy_id}' not found"}
-    return _build_result(False, 404, error_data, "error")
-
-
-def _handle_policy_create(client, desired_data):
-    """Handle creation of new policy."""
-    status, data = create_aggregation_policy(client, desired_data)
-    result = _build_result(True, status, data, "create")
-    if status == 200:
-        result["aggregation_policy"] = data
-    return result
-
-
-def ensure_present(client, policy_id, desired_data, result):
-    """
-    Ensure aggregation policy exists and is configured as desired.
-
-    Logic:
-    - If policy_id is provided: lookup by ID, check idempotency, update only if changed
-    - If policy_id is NOT provided: always create a new policy (title required in desired_data)
-
-    Args:
-        client: ItsiRequest instance
-        policy_id: Policy ID (_key) - if provided, update existing; if not, create new
-        desired_data: Desired policy configuration (title required only for create)
-        result: Result dictionary to update
-    """
-    if not policy_id:
-        result.update(_handle_policy_create(client, desired_data))
-        return
-
-    # policy_id provided - lookup and update if needed
-    current_status, current_data = get_aggregation_policy_by_id(client, policy_id)
-
-    if current_status == 200:
-        result.update(_handle_policy_update(client, policy_id, current_data, desired_data))
-    elif current_status == 404:
-        result.update(_handle_policy_not_found(policy_id))
-    else:
-        result.update(_build_result(False, current_status, current_data, "error"))
+# ------------------------------------------------------------------
+# Business logic
+# ------------------------------------------------------------------
 
 
 def _build_desired_data(params):
@@ -519,66 +408,15 @@ def _build_desired_data(params):
         "priority",
         "rules",
     )
-
     desired_data = {}
     for field_name in field_names:
         field_value = params.get(field_name)
         if field_value is not None:
             desired_data[field_name] = field_value
-
     additional_fields = params.get("additional_fields", {})
     if additional_fields:
         desired_data.update(additional_fields)
-
     return desired_data
-
-
-def _handle_present_check_mode(client, policy_id, desired_data):
-    """Handle check_mode for present state."""
-    if policy_id:
-        existing_status, _existing_data = get_aggregation_policy_by_id(client, policy_id)
-        operation = "update" if existing_status == 200 else "error"
-    else:
-        operation = "create"
-
-    return {
-        "changed": True,
-        "status": 200,
-        "operation": operation,
-        "body": json.dumps(desired_data),
-    }
-
-
-def _handle_absent_check_mode():
-    """Handle check_mode for absent state when policy exists."""
-    return {
-        "changed": True,
-        "status": 204,
-        "operation": "delete",
-        "body": "",
-    }
-
-
-def _handle_absent_delete(client, policy_id):
-    """Handle actual deletion of policy."""
-    status, data = delete_aggregation_policy(client, policy_id)
-    return {
-        "changed": status == 204,
-        "status": status,
-        "headers": _get_headers(data),
-        "body": _get_body(data),
-        "operation": "delete",
-    }
-
-
-def _handle_absent_not_found():
-    """Handle absent state when policy doesn't exist."""
-    return {
-        "changed": False,
-        "status": 404,
-        "operation": "no_change",
-        "body": "Aggregation policy already absent",
-    }
 
 
 def _handle_state_present(module, client, result):
@@ -592,9 +430,45 @@ def _handle_state_present(module, client, result):
     desired_data = _build_desired_data(module.params)
 
     if module.check_mode:
-        result.update(_handle_present_check_mode(client, policy_id, desired_data))
-    else:
-        ensure_present(client, policy_id, desired_data, result)
+        exists = get_aggregation_policy_by_id(client, policy_id) is not None if policy_id else False
+        result.update(
+            _result(
+                True,
+                0,
+                {},
+                desired_data,
+                check_mode=True,
+                operation="update" if exists else "create",
+            ),
+        )
+        return
+
+    # No policy_id → always create
+    if not policy_id:
+        _status, _hdr, body = create_aggregation_policy(client, desired_data)
+        result.update(_result(True, _status, _hdr, body, aggregation_policies=[body]))
+        return
+
+    # policy_id provided → lookup
+    get_result = get_aggregation_policy_by_id(client, policy_id)
+    if get_result is None:
+        module.fail_json(msg=f"Policy with ID '{policy_id}' not found")
+        return
+
+    cur_status, cur_hdr, current_data = get_result
+
+    # Idempotency check
+    current_canon = _canonicalize_policy(current_data)
+    desired_canon = _canonicalize_policy(desired_data)
+    diff = _diff_canonical(desired_canon, current_canon)
+
+    if not diff:
+        result.update(_result(False, cur_status, cur_hdr, current_data, aggregation_policies=[current_data]))
+        return
+
+    # Update needed
+    _status, _hdr, body = update_aggregation_policy(client, policy_id, desired_canon, current_data)
+    result.update(_result(True, _status, _hdr, body, aggregation_policies=[body], diff=diff))
 
 
 def _handle_state_absent(module, client, result):
@@ -604,20 +478,26 @@ def _handle_state_absent(module, client, result):
     if not policy_id:
         module.fail_json(msg="'policy_id' is required for absent state (titles are not unique)")
 
-    existing_status, _existing_data = get_aggregation_policy_by_id(client, policy_id)
+    exists = get_aggregation_policy_by_id(client, policy_id) is not None
 
-    if existing_status != 200:
-        result.update(_handle_absent_not_found())
-    elif module.check_mode:
-        result.update(_handle_absent_check_mode())
+    if not exists:
+        result.update(_result(False, 0, {}, {}, msg="Aggregation policy already absent"))
+        return
+
+    if module.check_mode:
+        result.update(_result(True, 0, {}, {}, check_mode=True))
+        return
+
+    del_result = delete_aggregation_policy(client, policy_id)
+    if del_result is None:
+        result.update(_result(True, 0, {}, {}))
     else:
-        result.update(_handle_absent_delete(client, policy_id))
+        _status, _hdr, body = del_result
+        result.update(_result(True, _status, _hdr, body))
 
 
 def main():
     """Main module function."""
-
-    # Define module arguments
     module_args = dict(
         title=dict(type="str", required=False),
         policy_id=dict(type="str", required=False),
@@ -642,31 +522,19 @@ def main():
         supports_check_mode=True,
     )
 
-    try:
-        client = ItsiRequest(Connection(module._socket_path))
-        result = {
-            "changed": False,
-            "status": 0,
-            "headers": {},
-            "body": "",
-            "operation": "none",
-        }
+    if not getattr(module, "_socket_path", None):
+        module.fail_json(msg="Use ansible_connection=httpapi and ansible_network_os=splunk.itsi.itsi_api_client")
 
-        state = module.params["state"]
-        if state == "present":
-            _handle_state_present(module, client, result)
-        elif state == "absent":
-            _handle_state_absent(module, client, result)
+    client = ItsiRequest(Connection(module._socket_path), module)
+    result = {"changed": False, "status": 0, "headers": {}, "body": {}}
 
-        module.exit_json(**result)
+    state = module.params["state"]
+    if state == "present":
+        _handle_state_present(module, client, result)
+    elif state == "absent":
+        _handle_state_absent(module, client, result)
 
-    except Exception as e:
-        module.fail_json(
-            msg=f"Exception occurred: {str(e)}",
-            title=module.params.get("title"),
-            policy_id=module.params.get("policy_id"),
-            state=module.params.get("state"),
-        )
+    module.exit_json(**result)
 
 
 if __name__ == "__main__":

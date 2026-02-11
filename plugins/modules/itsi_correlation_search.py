@@ -152,11 +152,6 @@ EXAMPLES = r"""
     search: "index=main error | stats count"
     state: present
   register: result
-  failed_when: result.status not in [200, 201]
-
-- name: Display result status
-  debug:
-    msg: "Operation completed with status {{ result.status }}"
 """
 
 RETURN = r"""
@@ -189,18 +184,16 @@ operation:
   sample: "create"
 """
 
-import json
 
 from ansible.module_utils.basic import AnsibleModule
 from ansible.module_utils.connection import Connection
 from ansible.module_utils.six.moves.urllib.parse import quote, quote_plus
-from ansible_collections.splunk.itsi.plugins.module_utils.itsi_request import ItsiRequest
-from ansible_collections.splunk.itsi.plugins.module_utils.itsi_utils import (
+from ansible_collections.splunk.itsi.plugins.module_utils.correlation_search_utils import (
+    BASE_EVENT_MGMT,
     flatten_search_object,
+    get_correlation_search,
 )
-
-# EMI endpoint for all correlation search operations
-BASE_EVENT_MGMT = "servicesNS/nobody/SA-ITOA/event_management_interface/correlation_search"
+from ansible_collections.splunk.itsi.plugins.module_utils.itsi_request import ItsiRequest
 
 # Field name constants for dispatch time settings
 DISPATCH_EARLIEST_TIME = "dispatch.earliest_time"
@@ -275,128 +268,44 @@ def _diff_canonical(desired_canon, current_canon):
     return diffs
 
 
-def get_correlation_search(client, search_identifier, fields=None, use_name_encoding=False):
-    """
-    EMI GET → always return flattened object on 200.
-
-    Args:
-        client: ItsiRequest instance
-        search_identifier: Correlation search ID or name
-        fields: Optional fields to retrieve
-        use_name_encoding: If True, use quote() for names with spaces (%20 encoding)
-                          If False, use quote_plus() for IDs (+ encoding)
-    """
-    if use_name_encoding:
-        # Use quote with safe='' to encode spaces as '%20' for names
-        path = f"{BASE_EVENT_MGMT}/{quote(search_identifier, safe='')}"
-    else:
-        # Use quote_plus for IDs (spaces become +)
-        path = f"{BASE_EVENT_MGMT}/{quote_plus(search_identifier)}"
-
-    params = {"output_mode": "json"}
-    if fields:
-        params["fields"] = ",".join(fields) if isinstance(fields, (list, tuple)) else fields
-    status, data = client.get(path, params=params)
-    if status == 200 and isinstance(data, dict):
-        flat = flatten_search_object(data)
-        if isinstance(data, dict) and "_response_headers" in data:
-            flat["_response_headers"] = data.get("_response_headers", {})
-        return 200, flat
-    return status, data
-
-
 def create_correlation_search(client, search_data):
-    """
-    Create a new correlation search via EMI.
-
-    Args:
-        client: ItsiRequest instance
-        search_data: Dictionary containing correlation search configuration
-
-    Returns:
-        tuple: (status_code, response_data)
-    """
-    # Prepare payload for EMI creation - handle time field formats
+    """Create a new correlation search via EMI."""
     payload = dict(search_data)
-
-    # Map dispatch.* time fields to EMI format for creation consistency
     if DISPATCH_EARLIEST_TIME in payload:
         payload["earliest_time"] = payload.pop(DISPATCH_EARLIEST_TIME)
     if DISPATCH_LATEST_TIME in payload:
         payload["latest_time"] = payload.pop(DISPATCH_LATEST_TIME)
-
-    # Ensure both EMI and dispatch formats are present for complete creation
     if "earliest_time" in payload:
         payload[DISPATCH_EARLIEST_TIME] = payload["earliest_time"]
     if "latest_time" in payload:
         payload[DISPATCH_LATEST_TIME] = payload["latest_time"]
-
-    # Use Event Management Interface for creation with JSON output
     params = {"output_mode": "json"}
-    status, data = client.post(BASE_EVENT_MGMT, params=params, payload=payload)
-    return status, data
+    return client.post(BASE_EVENT_MGMT, params=params, payload=payload)
 
 
 def update_correlation_search(client, search_identifier, update_data):
-    """
-    Update correlation search via EMI with is_partial_data=1.
-
-    Args:
-        client: ItsiRequest instance
-        search_identifier: Correlation search name or ID
-        update_data: Dictionary containing fields to update
-
-    Returns:
-        tuple: (status_code, response_data)
-    """
+    """Update correlation search via EMI with is_partial_data=1."""
     path = f"{BASE_EVENT_MGMT}/{quote_plus(search_identifier)}"
     params = {"output_mode": "json", "is_partial_data": "1"}
-
-    # Prepare JSON payload - EMI needs name in the body for some ITSI builds
     payload = {"name": search_identifier}
-
-    # Add update fields to payload
     if update_data:
-        # Include both EMI and dispatch time field formats
         u = dict(update_data)
         if DISPATCH_EARLIEST_TIME in u:
-            u["earliest_time"] = u[DISPATCH_EARLIEST_TIME]  # EMI format
+            u["earliest_time"] = u[DISPATCH_EARLIEST_TIME]
         if DISPATCH_LATEST_TIME in u:
-            u["latest_time"] = u[DISPATCH_LATEST_TIME]  # EMI format
+            u["latest_time"] = u[DISPATCH_LATEST_TIME]
         payload.update(u)
-
     return client.post(path, params=params, payload=payload)
 
 
 def delete_correlation_search(client, search_identifier, use_name_encoding=False):
-    """
-    Delete a correlation search.
-
-    Args:
-        client: ItsiRequest instance
-        search_identifier: Correlation search name or ID
-        use_name_encoding: If True, use quote() for names with spaces (%20 encoding)
-                          If False, use quote_plus() for IDs (+ encoding)
-
-    Returns:
-        tuple: (status_code, response_data)
-    """
-    # Use Event Management Interface for delete operations with JSON output
+    """Delete a correlation search."""
     if use_name_encoding:
-        # Use quote with safe='' to encode spaces as '%20' for names
         path = f"{BASE_EVENT_MGMT}/{quote(search_identifier, safe='')}"
     else:
-        # Use quote_plus for IDs (spaces become +)
         path = f"{BASE_EVENT_MGMT}/{quote_plus(search_identifier)}"
-
     params = {"output_mode": "json"}
-    status, data = client.delete(path, params=params)
-    return status, data
-
-
-def _get_headers_from_response(obj) -> dict:
-    """Extract response headers from an object safely."""
-    return obj.get("_response_headers", {}) if isinstance(obj, dict) else {}
+    return client.delete(path, params=params)
 
 
 def _should_set_is_scheduled(existing_flat: dict, diff: dict) -> bool:
@@ -407,106 +316,39 @@ def _should_set_is_scheduled(existing_flat: dict, diff: dict) -> bool:
     return not current_is_scheduled
 
 
-def _handle_existing_search(client, search_identifier, current_obj, desired_data, result):
-    """Handle update logic when correlation search already exists."""
-    existing_flat = flatten_search_object(current_obj) if isinstance(current_obj, dict) else {}
-    current_c = _canonicalize(existing_flat)
-    desired_c = _canonicalize(desired_data)
-
-    complete_desired = dict(current_c)
-    complete_desired.update(desired_c)
-
-    diff = _diff_canonical(complete_desired, current_c)
-    if not diff:
-        result.update(
-            {
-                "changed": False,
-                "status": 200,
-                "operation": "no_change",
-                "headers": _get_headers_from_response(current_obj),
-                "body": json.dumps({"existing": current_c, "desired": complete_desired, "diff": {}}),
-            },
-        )
-        return
-
-    update_payload = dict(desired_c)
-    if _should_set_is_scheduled(existing_flat, diff):
-        update_payload["is_scheduled"] = "1"
-
-    upd_status, upd_body = update_correlation_search(client, search_identifier, update_payload)
-    result.update(
-        {
-            "changed": (upd_status == 200),
-            "status": upd_status,
-            "operation": "update",
-            "headers": _get_headers_from_response(upd_body),
-            "body": json.dumps({"existing": current_c, "desired": desired_c, "diff": diff}),
-        },
-    )
+# ------------------------------------------------------------------
+# Result helper
+# ------------------------------------------------------------------
 
 
-def _handle_create_search(client, search_identifier, desired_data, result, use_name_encoding):
-    """Handle creation of new correlation search."""
-    create_status, create_body = create_correlation_search(client, desired_data)
-    after_status, after_obj = get_correlation_search(client, search_identifier, use_name_encoding=use_name_encoding)
-    normalized = flatten_search_object(after_obj) if after_status == 200 else {}
-    result.update(
-        {
-            "changed": (create_status == 200),
-            "status": create_status,
-            "operation": "create",
-            "headers": _get_headers_from_response(create_body),
-            "body": json.dumps(normalized),
-        },
-    )
+def _result(changed, status, headers, body, **extra):
+    """Build a unified result dict."""
+    r = {"changed": changed, "status": status, "headers": headers, "body": body}
+    r.update(extra)
+    return r
 
 
-def ensure_present(client, search_identifier, desired_data, result, use_name_encoding=False):
-    """
-    Idempotent ensure-present:
-    1) Check via EMI API for current state
-    2) If present: compare canonical shapes; update only if needed
-    3) If absent: create via EMI, then GET to return uniform shape
-    """
-    current_status, current_obj = get_correlation_search(client, search_identifier, use_name_encoding=use_name_encoding)
-
-    if current_status == 200:
-        _handle_existing_search(client, search_identifier, current_obj, desired_data, result)
-    elif current_status == 404:
-        _handle_create_search(client, search_identifier, desired_data, result, use_name_encoding)
-    else:
-        result.update(
-            {
-                "changed": False,
-                "status": current_status,
-                "operation": "error",
-                "body": json.dumps(current_obj) if isinstance(current_obj, dict) else str(current_obj),
-            },
-        )
+# ------------------------------------------------------------------
+# Business logic
+# ------------------------------------------------------------------
 
 
 def _build_desired_data(params: dict, search_identifier: str) -> dict:
     """Build desired data dictionary from module parameters."""
     desired_data = {"name": search_identifier}
-
     if params.get("search"):
         desired_data["search"] = params["search"]
-
     if params.get("disabled") is not None:
         desired_data["disabled"] = params["disabled"]
-
-    optional_fields = ["cron_schedule", "earliest_time", "latest_time", "description", "actions"]
-    for field in optional_fields:
+    for field in ("cron_schedule", "earliest_time", "latest_time", "description", "actions"):
         if params.get(field):
             desired_data[field] = params[field]
-
     if params.get("additional_fields"):
         desired_data.update(params["additional_fields"])
-
     return desired_data
 
 
-def _handle_present_state(module, client, params: dict, result: dict):
+def _handle_state_present(module, client, params: dict, result: dict):
     """Handle state=present logic."""
     name = params.get("name")
     correlation_search_id = params.get("correlation_search_id")
@@ -516,18 +358,56 @@ def _handle_present_state(module, client, params: dict, result: dict):
         module.fail_json(msg="Either 'name' or 'correlation_search_id' is required for present state")
 
     use_name_encoding = correlation_search_id is None and name is not None
-    current_status, _current_data = get_correlation_search(client, search_identifier, use_name_encoding=use_name_encoding)
+    current = get_correlation_search(client, search_identifier, use_name_encoding=use_name_encoding)
+    exists = current is not None
 
-    if current_status != 200 and not params.get("search"):
+    if not exists and not params.get("search"):
         module.fail_json(msg="'search' parameter is required when creating new correlation search")
 
     desired_data = _build_desired_data(params, search_identifier)
 
     if module.check_mode:
-        operation = "update" if current_status == 200 else "create"
-        result.update({"changed": True, "status": 200, "operation": operation, "body": json.dumps(desired_data)})
-    else:
-        ensure_present(client, search_identifier, desired_data, result, use_name_encoding=use_name_encoding)
+        result.update(
+            _result(
+                True,
+                0,
+                {},
+                desired_data,
+                check_mode=True,
+                operation="update" if exists else "create",
+            ),
+        )
+        return
+
+    # Create
+    if not exists:
+        _status, _hdr, _body = create_correlation_search(client, desired_data)
+        # Re-fetch to get the uniform flattened shape
+        after = get_correlation_search(client, search_identifier, use_name_encoding=use_name_encoding)
+        body = after[2] if after is not None else {}
+        result.update(_result(True, _status, _hdr, body))
+        return
+
+    # Update path – idempotency check
+    _cur_status, cur_hdr, cur_obj = current
+    existing_flat = flatten_search_object(cur_obj) if isinstance(cur_obj, dict) else {}
+    current_c = _canonicalize(existing_flat)
+    desired_c = _canonicalize(desired_data)
+
+    complete_desired = dict(current_c)
+    complete_desired.update(desired_c)
+    diff = _diff_canonical(complete_desired, current_c)
+
+    if not diff:
+        result.update(_result(False, _cur_status, cur_hdr, cur_obj))
+        return
+
+    update_payload = dict(desired_c)
+    if _should_set_is_scheduled(existing_flat, diff):
+        update_payload["is_scheduled"] = "1"
+
+    _status, _hdr, _body = update_correlation_search(client, search_identifier, update_payload)
+    result.update(_result(True, _status, _hdr, _body, diff=diff))
 
 
 def _handle_absent_state(module, client, params: dict, result: dict):
@@ -540,25 +420,22 @@ def _handle_absent_state(module, client, params: dict, result: dict):
         module.fail_json(msg="Either 'name' or 'correlation_search_id' is required for absent state")
 
     use_name_encoding = correlation_search_id is None and name is not None
-    existing_status, _existing_data = get_correlation_search(client, search_identifier, use_name_encoding=use_name_encoding)
+    exists = get_correlation_search(client, search_identifier, use_name_encoding=use_name_encoding) is not None
 
-    if existing_status != 200:
-        result.update({"changed": False, "status": 404, "operation": "no_change", "body": "Correlation search already absent"})
+    if not exists:
+        result.update(_result(False, 0, {}, {}, msg="Correlation search already absent"))
         return
 
     if module.check_mode:
-        result.update({"changed": True, "status": 204, "operation": "delete", "body": ""})
+        result.update(_result(True, 0, {}, {}, check_mode=True))
+        return
+
+    del_result = delete_correlation_search(client, search_identifier, use_name_encoding=use_name_encoding)
+    if del_result is None:
+        result.update(_result(True, 0, {}, {}))
     else:
-        status, data = delete_correlation_search(client, search_identifier, use_name_encoding=use_name_encoding)
-        result.update(
-            {
-                "changed": status == 204,
-                "status": 204,
-                "headers": data.get("_response_headers", {}),
-                "body": json.dumps(data) if isinstance(data, (dict, list)) else str(data),
-                "operation": "delete",
-            },
-        )
+        _status, _hdr, body = del_result
+        result.update(_result(True, _status, _hdr, body))
 
 
 def main():
@@ -582,25 +459,16 @@ def main():
     if not getattr(module, "_socket_path", None):
         module.fail_json(msg="Use ansible_connection=httpapi and ansible_network_os=splunk.itsi.itsi_api_client")
 
-    try:
-        client = ItsiRequest(Connection(module._socket_path))
-        result = {"changed": False, "status": 0, "headers": {}, "body": "", "operation": "none"}
+    client = ItsiRequest(Connection(module._socket_path), module)
+    result = {"changed": False, "status": 0, "headers": {}, "body": {}}
 
-        state = module.params["state"]
-        if state == "present":
-            _handle_present_state(module, client, module.params, result)
-        elif state == "absent":
-            _handle_absent_state(module, client, module.params, result)
+    state = module.params["state"]
+    if state == "present":
+        _handle_state_present(module, client, module.params, result)
+    elif state == "absent":
+        _handle_absent_state(module, client, module.params, result)
 
-        module.exit_json(**result)
-
-    except Exception as e:
-        module.fail_json(
-            msg=f"Exception occurred: {str(e)}",
-            name=module.params.get("name"),
-            correlation_search_id=module.params.get("correlation_search_id"),
-            state=module.params.get("state"),
-        )
+    module.exit_json(**result)
 
 
 if __name__ == "__main__":

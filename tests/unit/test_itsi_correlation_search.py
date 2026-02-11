@@ -3,9 +3,6 @@
 # Copyright (c) 2026 Splunk ITSI Ansible Collection maintainers
 """Unit tests for itsi_correlation_search module."""
 
-from __future__ import absolute_import, division, print_function
-
-__metaclass__ = type
 
 import json
 from unittest.mock import MagicMock, patch
@@ -27,20 +24,21 @@ class AnsibleFailJson(SystemExit):
     pass
 
 
-# Import module functions for testing
-from ansible_collections.splunk.itsi.plugins.module_utils.itsi_request import ItsiRequest
-from ansible_collections.splunk.itsi.plugins.module_utils.itsi_utils import (
+from ansible_collections.splunk.itsi.plugins.module_utils.correlation_search_utils import (
     _flatten_search_entry,
     flatten_search_object,
+    get_correlation_search,
     normalize_to_list,
 )
+
+# Import module functions for testing
+from ansible_collections.splunk.itsi.plugins.module_utils.itsi_request import ItsiRequest
 from ansible_collections.splunk.itsi.plugins.modules.itsi_correlation_search import (
     _canonicalize,
     _diff_canonical,
+    _handle_state_present,
     create_correlation_search,
     delete_correlation_search,
-    ensure_present,
-    get_correlation_search,
     main,
     update_correlation_search,
 )
@@ -322,6 +320,13 @@ class TestNormalizeToList:
         assert result == []
 
 
+def _mock_module():
+    """Create a MagicMock AnsibleModule for ItsiRequest."""
+    module = MagicMock()
+    module.fail_json.side_effect = AnsibleFailJson
+    return module
+
+
 class TestGetCorrelationSearch:
     """Tests for get_correlation_search function."""
 
@@ -334,10 +339,13 @@ class TestGetCorrelationSearch:
             "headers": {},
         }
 
-        status, data = get_correlation_search(ItsiRequest(mock_conn), "test-id")
+        status, headers, body = get_correlation_search(
+            ItsiRequest(mock_conn, _mock_module()),
+            "test-id",
+        )
 
         assert status == 200
-        assert data["search"] == "index=main | head 1"
+        assert body["search"] == "index=main | head 1"
 
     def test_get_with_name_encoding(self):
         """Test getting with name encoding (%20 for spaces)."""
@@ -348,7 +356,11 @@ class TestGetCorrelationSearch:
             "headers": {},
         }
 
-        get_correlation_search(ItsiRequest(mock_conn), "Test Search", use_name_encoding=True)
+        get_correlation_search(
+            ItsiRequest(mock_conn, _mock_module()),
+            "Test Search",
+            use_name_encoding=True,
+        )
 
         call_args = mock_conn.send_request.call_args
         # Should use %20 encoding
@@ -363,7 +375,11 @@ class TestGetCorrelationSearch:
             "headers": {},
         }
 
-        get_correlation_search(ItsiRequest(mock_conn), "Test Search", use_name_encoding=False)
+        get_correlation_search(
+            ItsiRequest(mock_conn, _mock_module()),
+            "Test Search",
+            use_name_encoding=False,
+        )
 
         call_args = mock_conn.send_request.call_args
         # Should use + encoding
@@ -378,7 +394,11 @@ class TestGetCorrelationSearch:
             "headers": {},
         }
 
-        get_correlation_search(ItsiRequest(mock_conn), "test-id", fields="name,search")
+        get_correlation_search(
+            ItsiRequest(mock_conn, _mock_module()),
+            "test-id",
+            fields="name,search",
+        )
 
         call_args = mock_conn.send_request.call_args
         assert "fields=name%2Csearch" in call_args[0][0]
@@ -392,7 +412,11 @@ class TestGetCorrelationSearch:
             "headers": {},
         }
 
-        get_correlation_search(ItsiRequest(mock_conn), "test-id", fields=["name", "search"])
+        get_correlation_search(
+            ItsiRequest(mock_conn, _mock_module()),
+            "test-id",
+            fields=["name", "search"],
+        )
 
         call_args = mock_conn.send_request.call_args
         assert "fields=name%2Csearch" in call_args[0][0]
@@ -406,9 +430,9 @@ class TestGetCorrelationSearch:
             "headers": {},
         }
 
-        status, data = get_correlation_search(ItsiRequest(mock_conn), "nonexistent")
+        result = get_correlation_search(ItsiRequest(mock_conn, _mock_module()), "nonexistent")
 
-        assert status == 404
+        assert result is None
 
 
 class TestCreateCorrelationSearch:
@@ -427,7 +451,10 @@ class TestCreateCorrelationSearch:
             "name": "New Search",
             "search": "index=main | head 1",
         }
-        status, data = create_correlation_search(ItsiRequest(mock_conn), search_data)
+        status, headers, body = create_correlation_search(
+            ItsiRequest(mock_conn, _mock_module()),
+            search_data,
+        )
 
         assert status == 200
         call_args = mock_conn.send_request.call_args
@@ -448,7 +475,7 @@ class TestCreateCorrelationSearch:
             "dispatch.earliest_time": "-15m",
             "dispatch.latest_time": "now",
         }
-        create_correlation_search(ItsiRequest(mock_conn), search_data)
+        create_correlation_search(ItsiRequest(mock_conn, _mock_module()), search_data)
 
         call_args = mock_conn.send_request.call_args
         payload = json.loads(call_args[1]["body"])
@@ -471,7 +498,7 @@ class TestCreateCorrelationSearch:
             "earliest_time": "-1h",
             "latest_time": "now",
         }
-        create_correlation_search(ItsiRequest(mock_conn), search_data)
+        create_correlation_search(ItsiRequest(mock_conn, _mock_module()), search_data)
 
         call_args = mock_conn.send_request.call_args
         payload = json.loads(call_args[1]["body"])
@@ -493,7 +520,11 @@ class TestUpdateCorrelationSearch:
         }
 
         update_data = {"disabled": "1"}
-        status, data = update_correlation_search(ItsiRequest(mock_conn), "test-id", update_data)
+        status, headers, body = update_correlation_search(
+            ItsiRequest(mock_conn, _mock_module()),
+            "test-id",
+            update_data,
+        )
 
         assert status == 200
         call_args = mock_conn.send_request.call_args
@@ -508,7 +539,11 @@ class TestUpdateCorrelationSearch:
             "headers": {},
         }
 
-        update_correlation_search(ItsiRequest(mock_conn), "test-id", {"disabled": "0"})
+        update_correlation_search(
+            ItsiRequest(mock_conn, _mock_module()),
+            "test-id",
+            {"disabled": "0"},
+        )
 
         call_args = mock_conn.send_request.call_args
         payload = json.loads(call_args[1]["body"])
@@ -527,7 +562,11 @@ class TestUpdateCorrelationSearch:
             "dispatch.earliest_time": "-30m",
             "dispatch.latest_time": "now",
         }
-        update_correlation_search(ItsiRequest(mock_conn), "test-id", update_data)
+        update_correlation_search(
+            ItsiRequest(mock_conn, _mock_module()),
+            "test-id",
+            update_data,
+        )
 
         call_args = mock_conn.send_request.call_args
         payload = json.loads(call_args[1]["body"])
@@ -542,7 +581,11 @@ class TestUpdateCorrelationSearch:
             "headers": {},
         }
 
-        update_correlation_search(ItsiRequest(mock_conn), "test-id", None)
+        update_correlation_search(
+            ItsiRequest(mock_conn, _mock_module()),
+            "test-id",
+            None,
+        )
 
         call_args = mock_conn.send_request.call_args
         payload = json.loads(call_args[1]["body"])
@@ -561,7 +604,10 @@ class TestDeleteCorrelationSearch:
             "headers": {},
         }
 
-        status, data = delete_correlation_search(ItsiRequest(mock_conn), "test-id")
+        status, headers, body = delete_correlation_search(
+            ItsiRequest(mock_conn, _mock_module()),
+            "test-id",
+        )
 
         assert status == 204
         call_args = mock_conn.send_request.call_args
@@ -576,7 +622,11 @@ class TestDeleteCorrelationSearch:
             "headers": {},
         }
 
-        delete_correlation_search(ItsiRequest(mock_conn), "Test Search", use_name_encoding=True)
+        delete_correlation_search(
+            ItsiRequest(mock_conn, _mock_module()),
+            "Test Search",
+            use_name_encoding=True,
+        )
 
         call_args = mock_conn.send_request.call_args
         assert "Test%20Search" in call_args[0][0]
@@ -590,17 +640,39 @@ class TestDeleteCorrelationSearch:
             "headers": {},
         }
 
-        delete_correlation_search(ItsiRequest(mock_conn), "Test Search", use_name_encoding=False)
+        delete_correlation_search(
+            ItsiRequest(mock_conn, _mock_module()),
+            "Test Search",
+            use_name_encoding=False,
+        )
 
         call_args = mock_conn.send_request.call_args
         assert "Test+Search" in call_args[0][0]
 
 
+def _default_params(**overrides):
+    """Build module params dict with defaults."""
+    params = {
+        "name": None,
+        "correlation_search_id": None,
+        "search": None,
+        "disabled": None,
+        "cron_schedule": None,
+        "earliest_time": None,
+        "latest_time": None,
+        "description": None,
+        "actions": None,
+        "additional_fields": None,
+    }
+    params.update(overrides)
+    return params
+
+
 class TestEnsurePresent:
-    """Tests for ensure_present function."""
+    """Tests for _handle_state_present function."""
 
     def test_ensure_present_create_new(self):
-        """Test ensure_present creates new search when not found."""
+        """Test _handle_state_present creates new search when not found."""
         mock_conn = MagicMock()
         # First call returns 404 (not found), second returns 200 (created), third returns 200 (verify)
         mock_conn.send_request.side_effect = [
@@ -609,15 +681,21 @@ class TestEnsurePresent:
             {"status": 200, "body": json.dumps(SAMPLE_API_RESPONSE), "headers": {}},
         ]
 
+        mock_module = _mock_module()
+        mock_module.check_mode = False
         result = {}
-        desired_data = {"name": "new-search", "search": "test"}
-        ensure_present(ItsiRequest(mock_conn), "new-search", desired_data, result)
+        params = _default_params(name="new-search", search="test")
+        _handle_state_present(
+            mock_module,
+            ItsiRequest(mock_conn, mock_module),
+            params,
+            result,
+        )
 
-        assert result["operation"] == "create"
         assert result["changed"] is True
 
     def test_ensure_present_no_change_needed(self):
-        """Test ensure_present when no change is needed."""
+        """Test _handle_state_present when no change is needed."""
         mock_conn = MagicMock()
         mock_conn.send_request.return_value = {
             "status": 200,
@@ -625,20 +703,25 @@ class TestEnsurePresent:
             "headers": {},
         }
 
+        mock_module = _mock_module()
+        mock_module.check_mode = False
         result = {}
-        # Desired matches current
-        desired_data = {
-            "name": "Test Search",
-            "search": "index=main | head 1",
-            "disabled": False,
-        }
-        ensure_present(ItsiRequest(mock_conn), "Test Search", desired_data, result)
+        params = _default_params(
+            name="Test Search",
+            search="index=main | head 1",
+            disabled=False,
+        )
+        _handle_state_present(
+            mock_module,
+            ItsiRequest(mock_conn, mock_module),
+            params,
+            result,
+        )
 
-        assert result["operation"] == "no_change"
         assert result["changed"] is False
 
     def test_ensure_present_update_needed(self):
-        """Test ensure_present when update is needed."""
+        """Test _handle_state_present when update is needed."""
         mock_conn = MagicMock()
         # First call returns existing, second is update
         mock_conn.send_request.side_effect = [
@@ -646,15 +729,20 @@ class TestEnsurePresent:
             {"status": 200, "body": json.dumps(SAMPLE_API_RESPONSE), "headers": {}},
         ]
 
+        mock_module = _mock_module()
+        mock_module.check_mode = False
         result = {}
-        # Change description
-        desired_data = {
-            "name": "Test Search",
-            "description": "New description",
-        }
-        ensure_present(ItsiRequest(mock_conn), "Test Search", desired_data, result)
+        params = _default_params(
+            name="Test Search",
+            description="New description",
+        )
+        _handle_state_present(
+            mock_module,
+            ItsiRequest(mock_conn, mock_module),
+            params,
+            result,
+        )
 
-        assert result["operation"] == "update"
         assert result["changed"] is True
 
     def test_ensure_present_update_cron_schedule_sets_is_scheduled(self):
@@ -683,12 +771,19 @@ class TestEnsurePresent:
             {"status": 200, "body": json.dumps(SAMPLE_API_RESPONSE), "headers": {}},
         ]
 
+        mock_module = _mock_module()
+        mock_module.check_mode = False
         result = {}
-        desired_data = {
-            "name": "Test Search",
-            "cron_schedule": "*/10 * * * *",  # Changed cron
-        }
-        ensure_present(ItsiRequest(mock_conn), "Test Search", desired_data, result)
+        params = _default_params(
+            name="Test Search",
+            cron_schedule="*/10 * * * *",
+        )
+        _handle_state_present(
+            mock_module,
+            ItsiRequest(mock_conn, mock_module),
+            params,
+            result,
+        )
 
         # Verify update was called with is_scheduled
         call_args = mock_conn.send_request.call_args_list[1]
@@ -696,7 +791,7 @@ class TestEnsurePresent:
         assert payload.get("is_scheduled") == "1"
 
     def test_ensure_present_error_response(self):
-        """Test ensure_present with error response."""
+        """Test _handle_state_present with error response (500 triggers fail_json)."""
         mock_conn = MagicMock()
         mock_conn.send_request.return_value = {
             "status": 500,
@@ -704,11 +799,18 @@ class TestEnsurePresent:
             "headers": {},
         }
 
+        mock_module = _mock_module()
+        mock_module.check_mode = False
         result = {}
-        ensure_present(ItsiRequest(mock_conn), "test", {"name": "test"}, result)
+        params = _default_params(name="test")
 
-        assert result["operation"] == "error"
-        assert result["status"] == 500
+        with pytest.raises(AnsibleFailJson):
+            _handle_state_present(
+                mock_module,
+                ItsiRequest(mock_conn, mock_module),
+                params,
+                result,
+            )
 
 
 class TestMain:
@@ -944,7 +1046,7 @@ class TestMain:
 
         mock_module.exit_json.assert_called_once()
         call_kwargs = mock_module.exit_json.call_args[1]
-        assert call_kwargs["operation"] == "delete"
+        assert call_kwargs["changed"] is True
 
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_correlation_search.Connection")
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_correlation_search.AnsibleModule")
@@ -984,7 +1086,6 @@ class TestMain:
         mock_module.exit_json.assert_called_once()
         call_kwargs = mock_module.exit_json.call_args[1]
         assert call_kwargs["changed"] is False
-        assert call_kwargs["operation"] == "no_change"
 
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_correlation_search.Connection")
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_correlation_search.AnsibleModule")
@@ -1024,7 +1125,6 @@ class TestMain:
         mock_module.exit_json.assert_called_once()
         call_kwargs = mock_module.exit_json.call_args[1]
         assert call_kwargs["changed"] is True
-        assert call_kwargs["operation"] == "delete"
 
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_correlation_search.Connection")
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_correlation_search.AnsibleModule")
@@ -1052,11 +1152,8 @@ class TestMain:
 
         mock_connection.side_effect = Exception("Connection failed")
 
-        with pytest.raises(AnsibleFailJson):
+        with pytest.raises(Exception):
             main()
-
-        mock_module.fail_json.assert_called_once()
-        assert "Exception occurred" in mock_module.fail_json.call_args[1]["msg"]
 
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_correlation_search.Connection")
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_correlation_search.AnsibleModule")
@@ -1095,8 +1192,9 @@ class TestMain:
 
         mock_module.exit_json.assert_called_once()
         call_kwargs = mock_module.exit_json.call_args[1]
-        body = json.loads(call_kwargs["body"])
-        assert body["custom_field"] == "custom_value"
+        body = call_kwargs["body"]
+        data = body if isinstance(body, dict) else json.loads(body)
+        assert data["custom_field"] == "custom_value"
 
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_correlation_search.Connection")
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_correlation_search.AnsibleModule")
@@ -1213,12 +1311,13 @@ class TestMain:
 
         mock_module.exit_json.assert_called_once()
         call_kwargs = mock_module.exit_json.call_args[1]
-        body = json.loads(call_kwargs["body"])
-        assert body["search"] == "index=main | head 1"
-        assert body["disabled"] is False
-        assert body["cron_schedule"] == "*/5 * * * *"
-        assert body["earliest_time"] == "-15m"
-        assert body["latest_time"] == "now"
-        assert body["description"] == "Complete test search"
-        assert body["actions"] == "itsi_event_generator"
-        assert body["priority"] == "high"
+        body = call_kwargs["body"]
+        data = body if isinstance(body, dict) else json.loads(body)
+        assert data["search"] == "index=main | head 1"
+        assert data["disabled"] is False
+        assert data["cron_schedule"] == "*/5 * * * *"
+        assert data["earliest_time"] == "-15m"
+        assert data["latest_time"] == "now"
+        assert data["description"] == "Complete test search"
+        assert data["actions"] == "itsi_event_generator"
+        assert data["priority"] == "high"

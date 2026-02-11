@@ -303,11 +303,6 @@ Examples
         search: "index=main error | stats count"
         state: present
       register: result
-      failed_when: result.status not in [200, 201]
-
-    - name: Display result status
-      debug:
-        msg: "Operation completed with status {{ result.status }}"
 
 
 

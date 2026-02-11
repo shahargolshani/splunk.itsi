@@ -121,10 +121,6 @@ service:
   description: Service document after the operation when available.
   type: dict
   returned: when not bulk
-status:
-  description: HTTP status code from Splunk for the last request.
-  type: int
-  returned: always
 changed_fields:
   description: Keys that changed during update.
   type: list
@@ -216,7 +212,7 @@ def _resolve_base_service_template_id(
         client: ItsiRequest instance.
         template_ref: Template identifier provided by the user. Can be a UUID-like `_key` or a title.
         module: Ansible module (used for fail_json).
-        result: Result dict to update with status/raw for the lookup call.
+        result: Result dict (passed to fail_json for context).
 
     Returns:
         The resolved template `_key`.
@@ -224,9 +220,10 @@ def _resolve_base_service_template_id(
     if _looks_like_uuid(template_ref):
         return template_ref
 
-    status, body = client.get(TEMPLATE_BASE, params={"filter": json.dumps({"title": template_ref})})
-    result["status"] = status
-    result["raw"] = body
+    api_result = client.get(TEMPLATE_BASE, params={"filter": json.dumps({"title": template_ref})})
+    if api_result is None:
+        module.fail_json(msg=f"Template '{template_ref}' not found.", **result)
+    _status, _headers, body = api_result
 
     # ITSI itoa_interface API returns a list directly
     template = None
@@ -514,7 +511,7 @@ def _get_by_key(
     client: ItsiRequest,
     key: str,
     fields: Optional[Union[str, List[str]]] = None,
-) -> Tuple[int, Any]:
+) -> Optional[Dict[str, Any]]:
     """Fetch a service document by `_key`.
 
     Args:
@@ -523,18 +520,22 @@ def _get_by_key(
         fields: Optional field name or list of field names to request.
 
     Returns:
-        Tuple of (HTTP status code, response body).
+        Service document dict, or None.
     """
     params = {}
     if fields:
         params["fields"] = fields if isinstance(fields, str) else ",".join(fields)
-    return client.get(f"{BASE}/{quote_plus(key)}", params=params)
+    api_result = client.get(f"{BASE}/{quote_plus(key)}", params=params)
+    if api_result is None:
+        return None
+    _status, _headers, body = api_result
+    return body if isinstance(body, dict) else None
 
 
 def _find_by_title(
     client: ItsiRequest,
     title: str,
-) -> Tuple[int, Optional[Dict[str, Any]], Optional[str]]:
+) -> Optional[Dict[str, Any]]:
     """Find a service by exact title.
 
     Args:
@@ -542,36 +543,32 @@ def _find_by_title(
         title: Exact service title to match.
 
     Returns:
-        Tuple of (HTTP status code, service document if found, error message if any).
+        Service document dict if found, or None.
     """
-    # ITSI itoa_interface API uses JSON filter format
     params = {"filter": json.dumps({"title": title})}
-    status, body = client.get(BASE, params=params)
+    api_result = client.get(BASE, params=params)
+    if api_result is None:
+        return None
+    _status, _headers, body = api_result
 
-    # ITSI itoa_interface API returns a list directly
     if not isinstance(body, list):
-        return status, None, None
+        return None
 
-    # Filter client-side for exact title match (API filter may be case-insensitive)
     matches = [d for d in body if isinstance(d, dict) and d.get("title") == title]
-
-    if not matches:
-        return status, None, None
-
-    return status, matches[0], None
+    return matches[0] if matches else None
 
 
-def _create(client: ItsiRequest, payload: Dict[str, Any]) -> Tuple[int, Any]:
+def _create(client: ItsiRequest, payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """Create a service.
 
-    Args:
-        client: ItsiRequest instance.
-        payload: Service payload to create.
-
     Returns:
-        Tuple of (HTTP status code, response body).
+        Response body dict, or None if not found.
     """
-    return client.post(BASE, payload=payload)
+    api_result = client.post(BASE, payload=payload)
+    if api_result is None:
+        return None
+    _status, _headers, body = api_result
+    return body
 
 
 def _update(
@@ -579,7 +576,7 @@ def _update(
     key: str,
     patch: Dict[str, Any],
     current_doc: Optional[Dict[str, Any]] = None,
-) -> Tuple[int, Any]:
+) -> Optional[Dict[str, Any]]:
     """Update a service by key.
 
     Args:
@@ -587,6 +584,9 @@ def _update(
         key: Service _key.
         patch: Dict of fields to update.
         current_doc: Optional current document to merge patch into for full update.
+
+    Returns:
+        Response body dict, or None if not found.
     """
     if current_doc:
         # Full object update: merge patch into current doc
@@ -596,7 +596,6 @@ def _update(
         for skip_field in (
             "_user",
             "_version",
-            "_response_headers",
             "mod_source",
             "mod_timestamp",
             "object_type",
@@ -609,20 +608,24 @@ def _update(
     else:
         # Partial update fallback
         payload = {"_key": key, **patch}
-    return client.post(f"{BASE}/{quote_plus(key)}", payload=payload)
+    api_result = client.post(f"{BASE}/{quote_plus(key)}", payload=payload)
+    if api_result is None:
+        return None
+    _status, _headers, body = api_result
+    return body
 
 
-def _delete(client: ItsiRequest, key: str) -> Tuple[int, Any]:
+def _delete(client: ItsiRequest, key: str) -> Optional[Dict[str, Any]]:
     """Delete a service by `_key`.
 
-    Args:
-        client: ItsiRequest instance.
-        key: Service `_key` identifier.
-
     Returns:
-        Tuple of (HTTP status code, response body).
+        Response body dict, or None if not found.
     """
-    return client.delete(f"{BASE}/{quote_plus(key)}")
+    api_result = client.delete(f"{BASE}/{quote_plus(key)}")
+    if api_result is None:
+        return None
+    _status, _headers, body = api_result
+    return body
 
 
 def _discover_current(
@@ -630,8 +633,6 @@ def _discover_current(
     client: ItsiRequest,
     key: Optional[str],
     name: Optional[str],
-    module: AnsibleModule,
-    result: Dict[str, Any],
 ) -> Optional[Dict[str, Any]]:
     """Discover the current service document.
 
@@ -643,36 +644,20 @@ def _discover_current(
         client: ItsiRequest instance.
         key: Service `_key` identifier, if provided.
         name: Service title, if provided.
-        module: Ansible module (used for fail_json).
-        result: Result dict to update with status/raw fields.
 
     Returns:
         Current service document, or None if not found.
     """
     if key:
-        status, body = _get_by_key(client, key)
-        result["status"] = status
-        result["raw"] = body
-        if status == 200 and isinstance(body, dict):
-            return body
-        return None
+        return _get_by_key(client, key)
 
-    status, doc, err = _find_by_title(client, name)
-    result["status"] = status
-    if err:
-        result["raw"] = doc if doc is not None else {}
-        module.fail_json(msg=err, **result)
+    doc = _find_by_title(client, name)
 
     # If found by title, fetch full document by _key for complete field data.
     if doc and doc.get("_key"):
-        status, full_doc = _get_by_key(client, doc["_key"])
-        result["status"] = status
-        result["raw"] = full_doc if full_doc is not None else {}
-        if status == 200 and isinstance(full_doc, dict):
-            return full_doc
-        return doc
+        full_doc = _get_by_key(client, doc["_key"])
+        return full_doc if full_doc is not None else doc
 
-    result["raw"] = doc if doc is not None else {}
     return doc
 
 
@@ -703,8 +688,7 @@ def _handle_absent(
         result["diff"]["after"] = {}
         module.exit_json(**result)
 
-    status, body = _delete(client, current.get("_key", key))
-    result["status"] = status
+    body = _delete(client, current.get("_key", key))
     result["raw"] = body
     result["changed"] = True
     result["service"] = None
@@ -751,15 +735,8 @@ def _handle_create(
         result["diff"]["after"] = {k: desired.get(k) for k in DIFF_FIELDS}
         module.exit_json(**result)
 
-    status, body = _create(client, desired)
-    result["status"] = status
+    body = _create(client, desired)
     result["raw"] = body
-
-    if status >= 400:
-        module.fail_json(
-            msg=f"Failed to create service: HTTP {status}",
-            **result,
-        )
 
     created = body if isinstance(body, dict) else {}
     result["service"] = {"_key": created.get("_key"), **desired} if created.get("_key") else desired
@@ -813,19 +790,8 @@ def _handle_update(
         result["diff"]["after"] = {k: after.get(k) for k in DIFF_FIELDS}
         module.exit_json(**result)
 
-    status, body = _update(client, current.get("_key", key), patch, current_doc=current)
-    result["status"] = status
+    body = _update(client, current.get("_key", key), patch, current_doc=current)
     result["raw"] = body
-
-    if status >= 400:
-        result["changed_fields"] = changed_fields
-        result["diff"]["before"] = before_diff
-        result["diff"]["after"] = {k: patch.get(k, current.get(k)) for k in DIFF_FIELDS}
-        result["attempted_patch"] = patch
-        module.fail_json(
-            msg=f"Failed to update service: HTTP {status}. Check 'attempted_patch' for payload sent.",
-            **result,
-        )
 
     result["changed"] = True
     result["changed_fields"] = changed_fields
@@ -863,11 +829,10 @@ def main() -> None:
         )
 
     params = module.params
-    client = ItsiRequest(Connection(module._socket_path))
+    client = ItsiRequest(Connection(module._socket_path), module)
 
     result: Dict[str, Any] = {
         "changed": False,
-        "status": 0,
         "service": None,
         "raw": {},
         "changed_fields": [],
@@ -879,7 +844,7 @@ def main() -> None:
     name = params.get("name")
 
     # Discover current service state
-    current = _discover_current(client=client, key=key, name=name, module=module, result=result)
+    current = _discover_current(client=client, key=key, name=name)
 
     # Absent
     if state == "absent":

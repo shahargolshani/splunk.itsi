@@ -335,21 +335,6 @@ Common return values are documented `here <https://docs.ansible.com/ansible/late
                     <br/>
                 </td>
             </tr>
-            <tr>
-                <td colspan="1">
-                    <div class="ansibleOptionAnchor" id="return-"></div>
-                    <b>status</b>
-                    <a class="ansibleOptionLink" href="#return-" title="Permalink to this return value"></a>
-                    <div style="font-size: small">
-                      <span style="color: purple">integer</span>
-                    </div>
-                </td>
-                <td>always</td>
-                <td>
-                            <div>HTTP status code from Splunk for the last request.</div>
-                    <br/>
-                </td>
-            </tr>
     </table>
     <br/><br/>
 

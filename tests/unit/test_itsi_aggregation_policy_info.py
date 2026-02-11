@@ -23,22 +23,22 @@ class AnsibleFailJson(SystemExit):
     pass
 
 
-# Import shared utilities from module_utils
-from ansible_collections.splunk.itsi.plugins.module_utils.itsi_request import ItsiRequest
-from ansible_collections.splunk.itsi.plugins.module_utils.itsi_utils import (
+from ansible_collections.splunk.itsi.plugins.module_utils.aggregation_policy_utils import (
     flatten_policy_object,
-    get_aggregation_policies_by_title,
     get_aggregation_policy_by_id,
     list_aggregation_policies,
     normalize_policy_list,
 )
 
+# Import shared utilities from module_utils
+from ansible_collections.splunk.itsi.plugins.module_utils.itsi_request import ItsiRequest
+
 # Import module functions for testing
 from ansible_collections.splunk.itsi.plugins.modules.itsi_aggregation_policy_info import (
     _list_all_policies,
-    _normalize_response_data,
     _query_by_policy_id,
     _query_by_title,
+    get_aggregation_policies_by_title,
     main,
 )
 
@@ -84,6 +84,13 @@ SAMPLE_POLICY_WITH_CONTENT = {
     "links": {},
     "acl": {},
 }
+
+
+def _mock_module():
+    """Create a MagicMock AnsibleModule for ItsiRequest."""
+    module = MagicMock()
+    module.fail_json.side_effect = AnsibleFailJson
+    return module
 
 
 class TestNormalizePolicyList:
@@ -167,7 +174,7 @@ class TestGetAggregationPolicyById:
             "headers": {},
         }
 
-        status, data = get_aggregation_policy_by_id(ItsiRequest(mock_conn), "test_policy_id")
+        status, headers, data = get_aggregation_policy_by_id(ItsiRequest(mock_conn, _mock_module()), "test_policy_id")
 
         assert status == 200
         assert data["title"] == "Test Policy"
@@ -181,7 +188,7 @@ class TestGetAggregationPolicyById:
             "headers": {},
         }
 
-        get_aggregation_policy_by_id(ItsiRequest(mock_conn), "test_policy_id", fields="title,disabled")
+        get_aggregation_policy_by_id(ItsiRequest(mock_conn, _mock_module()), "test_policy_id", fields="title,disabled")
 
         call_args = mock_conn.send_request.call_args
         assert "fields=title%2Cdisabled" in call_args[0][0]
@@ -195,9 +202,12 @@ class TestGetAggregationPolicyById:
             "headers": {},
         }
 
-        status, data = get_aggregation_policy_by_id(ItsiRequest(mock_conn), "nonexistent")
+        result = get_aggregation_policy_by_id(
+            ItsiRequest(mock_conn, _mock_module()),
+            "nonexistent",
+        )
 
-        assert status == 404
+        assert result is None
 
     def test_get_by_id_url_encoding(self):
         """Test policy_id is URL encoded."""
@@ -208,7 +218,7 @@ class TestGetAggregationPolicyById:
             "headers": {},
         }
 
-        get_aggregation_policy_by_id(ItsiRequest(mock_conn), "policy with spaces")
+        get_aggregation_policy_by_id(ItsiRequest(mock_conn, _mock_module()), "policy with spaces")
 
         call_args = mock_conn.send_request.call_args
         assert "policy+with+spaces" in call_args[0][0]
@@ -226,7 +236,7 @@ class TestListAggregationPolicies:
             "headers": {},
         }
 
-        status, data = list_aggregation_policies(ItsiRequest(mock_conn))
+        status, headers, data = list_aggregation_policies(ItsiRequest(mock_conn, _mock_module()))
 
         assert status == 200
         assert "aggregation_policies" in data
@@ -241,7 +251,7 @@ class TestListAggregationPolicies:
             "headers": {},
         }
 
-        list_aggregation_policies(ItsiRequest(mock_conn), fields="_key,title")
+        list_aggregation_policies(ItsiRequest(mock_conn, _mock_module()), fields="_key,title")
 
         call_args = mock_conn.send_request.call_args
         assert "fields=_key%2Ctitle" in call_args[0][0]
@@ -255,7 +265,7 @@ class TestListAggregationPolicies:
             "headers": {},
         }
 
-        list_aggregation_policies(ItsiRequest(mock_conn), filter_data='{"disabled": 0}')
+        list_aggregation_policies(ItsiRequest(mock_conn, _mock_module()), filter_data='{"disabled": 0}')
 
         call_args = mock_conn.send_request.call_args
         assert "filter_data" in call_args[0][0]
@@ -269,7 +279,7 @@ class TestListAggregationPolicies:
             "headers": {},
         }
 
-        list_aggregation_policies(ItsiRequest(mock_conn), limit=5)
+        list_aggregation_policies(ItsiRequest(mock_conn, _mock_module()), limit=5)
 
         call_args = mock_conn.send_request.call_args
         assert "limit=5" in call_args[0][0]
@@ -283,13 +293,13 @@ class TestListAggregationPolicies:
             "headers": {},
         }
 
-        status, data = list_aggregation_policies(ItsiRequest(mock_conn))
+        status, headers, data = list_aggregation_policies(ItsiRequest(mock_conn, _mock_module()))
 
         assert status == 200
         assert data["aggregation_policies"] == []
 
     def test_list_error(self):
-        """Test listing with error."""
+        """Test listing with error calls fail_json."""
         mock_conn = MagicMock()
         mock_conn.send_request.return_value = {
             "status": 500,
@@ -297,9 +307,8 @@ class TestListAggregationPolicies:
             "headers": {},
         }
 
-        status, data = list_aggregation_policies(ItsiRequest(mock_conn))
-
-        assert status == 500
+        with pytest.raises(AnsibleFailJson):
+            list_aggregation_policies(ItsiRequest(mock_conn, _mock_module()))
 
 
 class TestGetAggregationPoliciesByTitle:
@@ -314,7 +323,7 @@ class TestGetAggregationPoliciesByTitle:
             "headers": {},
         }
 
-        status, data = get_aggregation_policies_by_title(ItsiRequest(mock_conn), "Test Policy")
+        status, headers, data = get_aggregation_policies_by_title(ItsiRequest(mock_conn, _mock_module()), "Test Policy")
 
         assert status == 200
         assert len(data["aggregation_policies"]) == 1
@@ -329,7 +338,7 @@ class TestGetAggregationPoliciesByTitle:
             "headers": {},
         }
 
-        status, data = get_aggregation_policies_by_title(ItsiRequest(mock_conn), "Test Policy")
+        status, headers, data = get_aggregation_policies_by_title(ItsiRequest(mock_conn, _mock_module()), "Test Policy")
 
         assert status == 200
         assert len(data["aggregation_policies"]) == 2  # Both SAMPLE_POLICY and SAMPLE_POLICY_2
@@ -343,7 +352,7 @@ class TestGetAggregationPoliciesByTitle:
             "headers": {},
         }
 
-        status, data = get_aggregation_policies_by_title(ItsiRequest(mock_conn), "Nonexistent Title")
+        status, headers, data = get_aggregation_policies_by_title(ItsiRequest(mock_conn, _mock_module()), "Nonexistent Title")
 
         assert status == 200
         assert len(data["aggregation_policies"]) == 0
@@ -357,13 +366,13 @@ class TestGetAggregationPoliciesByTitle:
             "headers": {},
         }
 
-        get_aggregation_policies_by_title(ItsiRequest(mock_conn), "Test Policy", fields="_key,title")
+        get_aggregation_policies_by_title(ItsiRequest(mock_conn, _mock_module()), "Test Policy", fields="_key,title")
 
         call_args = mock_conn.send_request.call_args
         assert "fields=_key%2Ctitle" in call_args[0][0]
 
     def test_get_by_title_error(self):
-        """Test getting policy by title with error."""
+        """Test getting policy by title with error calls fail_json."""
         mock_conn = MagicMock()
         mock_conn.send_request.return_value = {
             "status": 500,
@@ -371,9 +380,11 @@ class TestGetAggregationPoliciesByTitle:
             "headers": {},
         }
 
-        status, data = get_aggregation_policies_by_title(ItsiRequest(mock_conn), "Test Policy")
-
-        assert status == 500
+        with pytest.raises(AnsibleFailJson):
+            get_aggregation_policies_by_title(
+                ItsiRequest(mock_conn, _mock_module()),
+                "Test Policy",
+            )
 
     def test_get_by_title_exact_match(self):
         """Test getting policy by title uses exact match."""
@@ -390,41 +401,11 @@ class TestGetAggregationPoliciesByTitle:
             "headers": {},
         }
 
-        status, data = get_aggregation_policies_by_title(ItsiRequest(mock_conn), "Test Policy")
+        status, headers, data = get_aggregation_policies_by_title(ItsiRequest(mock_conn, _mock_module()), "Test Policy")
 
         assert status == 200
         assert len(data["aggregation_policies"]) == 1
         assert data["aggregation_policies"][0]["_key"] == "2"
-
-
-class TestNormalizeResponseData:
-    """Tests for _normalize_response_data helper function."""
-
-    def test_normalize_dict_input(self):
-        """Test normalizing dict input returns as-is."""
-        data = {"aggregation_policies": [SAMPLE_POLICY], "_response_headers": {"X-Test": "value"}}
-        result = _normalize_response_data(data)
-        assert result == data
-
-    def test_normalize_non_dict_returns_default(self):
-        """Test normalizing non-dict returns default structure."""
-        result = _normalize_response_data("string")
-        assert result == {"aggregation_policies": [], "_response_headers": {}}
-
-    def test_normalize_none_returns_default(self):
-        """Test normalizing None returns default structure."""
-        result = _normalize_response_data(None)
-        assert result == {"aggregation_policies": [], "_response_headers": {}}
-
-    def test_normalize_list_returns_default(self):
-        """Test normalizing list returns default structure."""
-        result = _normalize_response_data([SAMPLE_POLICY])
-        assert result == {"aggregation_policies": [], "_response_headers": {}}
-
-    def test_normalize_empty_dict(self):
-        """Test normalizing empty dict returns it as-is."""
-        result = _normalize_response_data({})
-        assert result == {}
 
 
 class TestQueryByPolicyId:
@@ -439,14 +420,15 @@ class TestQueryByPolicyId:
             "headers": {},
         }
 
-        result = _query_by_policy_id(ItsiRequest(mock_conn), "test_policy_id", None)
+        result = _query_by_policy_id(ItsiRequest(mock_conn, _mock_module()), "test_policy_id", None)
 
         assert result["status"] == 200
-        assert result["aggregation_policy"]["_key"] == "test_policy_id"
+        assert len(result["aggregation_policies"]) == 1
+        assert result["aggregation_policies"][0]["_key"] == "test_policy_id"
         assert "headers" in result
 
     def test_query_not_found(self):
-        """Test query when policy not found."""
+        """Test query when policy not found returns status 0 and empty list."""
         mock_conn = MagicMock()
         mock_conn.send_request.return_value = {
             "status": 404,
@@ -454,10 +436,10 @@ class TestQueryByPolicyId:
             "headers": {},
         }
 
-        result = _query_by_policy_id(ItsiRequest(mock_conn), "nonexistent", None)
+        result = _query_by_policy_id(ItsiRequest(mock_conn, _mock_module()), "nonexistent", None)
 
-        assert result["status"] == 404
-        assert result["aggregation_policy"] is None
+        assert result["status"] == 0
+        assert result["aggregation_policies"] == []
 
     def test_query_with_fields(self):
         """Test query with specific fields."""
@@ -468,13 +450,13 @@ class TestQueryByPolicyId:
             "headers": {},
         }
 
-        _query_by_policy_id(ItsiRequest(mock_conn), "test_policy_id", "title,disabled")
+        _query_by_policy_id(ItsiRequest(mock_conn, _mock_module()), "test_policy_id", "title,disabled")
 
         call_args = mock_conn.send_request.call_args
         assert "fields=title%2Cdisabled" in call_args[0][0]
 
     def test_query_non_dict_response(self):
-        """Test query handles non-dict response."""
+        """Test query with 500 response calls fail_json."""
         mock_conn = MagicMock()
         mock_conn.send_request.return_value = {
             "status": 500,
@@ -482,10 +464,8 @@ class TestQueryByPolicyId:
             "headers": {},
         }
 
-        result = _query_by_policy_id(ItsiRequest(mock_conn), "test_policy_id", None)
-
-        assert result["status"] == 500
-        assert result["headers"] == {}
+        with pytest.raises(AnsibleFailJson):
+            _query_by_policy_id(ItsiRequest(mock_conn, _mock_module()), "test_policy_id", None)
 
 
 class TestQueryByTitle:
@@ -500,11 +480,11 @@ class TestQueryByTitle:
             "headers": {},
         }
 
-        result = _query_by_title(ItsiRequest(mock_conn), "Test Policy", None)
+        result = _query_by_title(ItsiRequest(mock_conn, _mock_module()), "Test Policy", None)
 
         assert result["status"] == 200
         assert len(result["aggregation_policies"]) == 1
-        assert result["aggregation_policy"]["_key"] == "test_policy_id"
+        assert result["aggregation_policies"][0]["_key"] == "test_policy_id"
         assert "headers" in result
 
     def test_query_multiple_matches(self):
@@ -516,11 +496,10 @@ class TestQueryByTitle:
             "headers": {},
         }
 
-        result = _query_by_title(ItsiRequest(mock_conn), "Test Policy", None)
+        result = _query_by_title(ItsiRequest(mock_conn, _mock_module()), "Test Policy", None)
 
         assert result["status"] == 200
         assert len(result["aggregation_policies"]) == 2
-        assert result["aggregation_policy"] is None  # Multiple matches = None
 
     def test_query_no_match(self):
         """Test query with no matching policies."""
@@ -531,11 +510,10 @@ class TestQueryByTitle:
             "headers": {},
         }
 
-        result = _query_by_title(ItsiRequest(mock_conn), "Test Policy", None)
+        result = _query_by_title(ItsiRequest(mock_conn, _mock_module()), "Test Policy", None)
 
         assert result["status"] == 200
         assert len(result["aggregation_policies"]) == 0
-        assert result["aggregation_policy"] is None
 
     def test_query_with_fields(self):
         """Test query with specific fields."""
@@ -546,13 +524,13 @@ class TestQueryByTitle:
             "headers": {},
         }
 
-        _query_by_title(ItsiRequest(mock_conn), "Test Policy", "_key,title")
+        _query_by_title(ItsiRequest(mock_conn, _mock_module()), "Test Policy", "_key,title")
 
         call_args = mock_conn.send_request.call_args
         assert "fields=_key%2Ctitle" in call_args[0][0]
 
     def test_query_non_dict_response(self):
-        """Test query handles non-dict response."""
+        """Test query with 500 response calls fail_json."""
         mock_conn = MagicMock()
         mock_conn.send_request.return_value = {
             "status": 500,
@@ -560,10 +538,8 @@ class TestQueryByTitle:
             "headers": {},
         }
 
-        result = _query_by_title(ItsiRequest(mock_conn), "Test Policy", None)
-
-        assert result["status"] == 500
-        assert result["aggregation_policies"] == []
+        with pytest.raises(AnsibleFailJson):
+            _query_by_title(ItsiRequest(mock_conn, _mock_module()), "Test Policy", None)
 
 
 class TestListAllPolicies:
@@ -578,7 +554,7 @@ class TestListAllPolicies:
             "headers": {},
         }
 
-        result = _list_all_policies(ItsiRequest(mock_conn), None, None, None)
+        result = _list_all_policies(ItsiRequest(mock_conn, _mock_module()), None, None, None)
 
         assert result["status"] == 200
         assert len(result["aggregation_policies"]) == 2
@@ -593,7 +569,7 @@ class TestListAllPolicies:
             "headers": {},
         }
 
-        _list_all_policies(ItsiRequest(mock_conn), "_key,title", None, None)
+        _list_all_policies(ItsiRequest(mock_conn, _mock_module()), "_key,title", None, None)
 
         call_args = mock_conn.send_request.call_args
         assert "fields=_key%2Ctitle" in call_args[0][0]
@@ -607,7 +583,7 @@ class TestListAllPolicies:
             "headers": {},
         }
 
-        _list_all_policies(ItsiRequest(mock_conn), None, '{"disabled": 0}', None)
+        _list_all_policies(ItsiRequest(mock_conn, _mock_module()), None, '{"disabled": 0}', None)
 
         call_args = mock_conn.send_request.call_args
         assert "filter_data" in call_args[0][0]
@@ -621,7 +597,7 @@ class TestListAllPolicies:
             "headers": {},
         }
 
-        _list_all_policies(ItsiRequest(mock_conn), None, None, 5)
+        _list_all_policies(ItsiRequest(mock_conn, _mock_module()), None, None, 5)
 
         call_args = mock_conn.send_request.call_args
         assert "limit=5" in call_args[0][0]
@@ -635,13 +611,13 @@ class TestListAllPolicies:
             "headers": {},
         }
 
-        result = _list_all_policies(ItsiRequest(mock_conn), None, None, None)
+        result = _list_all_policies(ItsiRequest(mock_conn, _mock_module()), None, None, None)
 
         assert result["status"] == 200
         assert result["aggregation_policies"] == []
 
     def test_list_non_dict_response(self):
-        """Test listing handles non-dict response."""
+        """Test listing with 500 response calls fail_json."""
         mock_conn = MagicMock()
         mock_conn.send_request.return_value = {
             "status": 500,
@@ -649,10 +625,8 @@ class TestListAllPolicies:
             "headers": {},
         }
 
-        result = _list_all_policies(ItsiRequest(mock_conn), None, None, None)
-
-        assert result["status"] == 500
-        assert result["aggregation_policies"] == []
+        with pytest.raises(AnsibleFailJson):
+            _list_all_policies(ItsiRequest(mock_conn, _mock_module()), None, None, None)
 
 
 class TestMain:
@@ -691,7 +665,8 @@ class TestMain:
         call_kwargs = mock_module.exit_json.call_args[1]
         assert call_kwargs["changed"] is False
         assert call_kwargs["status"] == 200
-        assert call_kwargs["aggregation_policy"]["_key"] == "test_policy_id"
+        assert len(call_kwargs["aggregation_policies"]) == 1
+        assert call_kwargs["aggregation_policies"][0]["_key"] == "test_policy_id"
 
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_aggregation_policy_info.Connection")
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_aggregation_policy_info.AnsibleModule")
@@ -725,7 +700,7 @@ class TestMain:
         mock_module.exit_json.assert_called_once()
         call_kwargs = mock_module.exit_json.call_args[1]
         assert call_kwargs["changed"] is False
-        assert call_kwargs["aggregation_policy"] is None
+        assert call_kwargs["aggregation_policies"] == []
 
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_aggregation_policy_info.Connection")
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_aggregation_policy_info.AnsibleModule")
@@ -760,8 +735,7 @@ class TestMain:
         call_kwargs = mock_module.exit_json.call_args[1]
         assert call_kwargs["changed"] is False
         assert len(call_kwargs["aggregation_policies"]) == 1
-        # Single match also sets aggregation_policy
-        assert call_kwargs["aggregation_policy"]["_key"] == "test_policy_id"
+        assert call_kwargs["aggregation_policies"][0]["_key"] == "test_policy_id"
 
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_aggregation_policy_info.Connection")
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_aggregation_policy_info.AnsibleModule")
@@ -795,8 +769,6 @@ class TestMain:
         mock_module.exit_json.assert_called_once()
         call_kwargs = mock_module.exit_json.call_args[1]
         assert len(call_kwargs["aggregation_policies"]) == 2
-        # Multiple matches don't set aggregation_policy
-        assert "aggregation_policy" not in call_kwargs or call_kwargs.get("aggregation_policy") is None
 
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_aggregation_policy_info.Connection")
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_aggregation_policy_info.AnsibleModule")
@@ -830,7 +802,6 @@ class TestMain:
         mock_module.exit_json.assert_called_once()
         call_kwargs = mock_module.exit_json.call_args[1]
         assert len(call_kwargs["aggregation_policies"]) == 0
-        assert call_kwargs["aggregation_policy"] is None
 
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_aggregation_policy_info.Connection")
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_aggregation_policy_info.AnsibleModule")
@@ -982,11 +953,8 @@ class TestMain:
 
         mock_connection.side_effect = Exception("Connection failed")
 
-        with pytest.raises(AnsibleFailJson):
+        with pytest.raises(Exception, match="Connection failed"):
             main()
-
-        mock_module.fail_json.assert_called_once()
-        assert "Exception occurred" in mock_module.fail_json.call_args[1]["msg"]
 
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_aggregation_policy_info.Connection")
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_aggregation_policy_info.AnsibleModule")
@@ -1055,7 +1023,7 @@ class TestMain:
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_aggregation_policy_info.Connection")
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_aggregation_policy_info.AnsibleModule")
     def test_main_query_by_title_non_dict_response(self, mock_module_class, mock_connection):
-        """Test main query by title handles non-dict response."""
+        """Test main query by title with 500 response calls fail_json."""
         mock_module = MagicMock()
         mock_module._socket_path = "/tmp/socket"
         mock_module.params = {
@@ -1071,7 +1039,6 @@ class TestMain:
         mock_module_class.return_value = mock_module
 
         mock_conn = MagicMock()
-        # Return non-dict (which becomes an error response)
         mock_conn.send_request.return_value = {
             "status": 500,
             "body": "invalid",
@@ -1079,16 +1046,15 @@ class TestMain:
         }
         mock_connection.return_value = mock_conn
 
-        with pytest.raises(AnsibleExitJson):
+        with pytest.raises(AnsibleFailJson):
             main()
 
-        # Should handle gracefully
-        mock_module.exit_json.assert_called_once()
+        mock_module.fail_json.assert_called_once()
 
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_aggregation_policy_info.Connection")
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_aggregation_policy_info.AnsibleModule")
     def test_main_list_all_non_dict_response(self, mock_module_class, mock_connection):
-        """Test main list all handles non-dict response."""
+        """Test main list all with 500 response calls fail_json."""
         mock_module = MagicMock()
         mock_module._socket_path = "/tmp/socket"
         mock_module.params = {
@@ -1104,7 +1070,6 @@ class TestMain:
         mock_module_class.return_value = mock_module
 
         mock_conn = MagicMock()
-        # Return error response
         mock_conn.send_request.return_value = {
             "status": 500,
             "body": "error",
@@ -1112,10 +1077,7 @@ class TestMain:
         }
         mock_connection.return_value = mock_conn
 
-        with pytest.raises(AnsibleExitJson):
+        with pytest.raises(AnsibleFailJson):
             main()
 
-        # Should handle gracefully with empty list
-        mock_module.exit_json.assert_called_once()
-        call_kwargs = mock_module.exit_json.call_args[1]
-        assert call_kwargs["aggregation_policies"] == []
+        mock_module.fail_json.assert_called_once()

@@ -3,9 +3,6 @@
 # Copyright (c) 2026 Splunk ITSI Ansible Collection maintainers
 """Unit tests for itsi_service_info module."""
 
-from __future__ import absolute_import, division, print_function
-
-__metaclass__ = type
 
 import json
 from unittest.mock import MagicMock, patch
@@ -199,13 +196,16 @@ class TestMain:
 
         mock_module.exit_json.assert_called_once()
         call_kwargs = mock_module.exit_json.call_args[1]
-        assert call_kwargs["status"] == 200
         assert call_kwargs["service"]["title"] == "api-gateway"
 
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_service_info.Connection")
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_service_info.AnsibleModule")
     def test_main_get_by_service_id_not_found(self, mock_module_class, mock_connection):
-        """Test main getting service by service_id (not found)."""
+        """Test main getting service by service_id (not found).
+
+        When API returns 404, ItsiRequest returns None; module exits
+        with exit_json (no fail_json) and default empty result.
+        """
         mock_module = MagicMock()
         mock_module._socket_path = "/tmp/socket"
         mock_module.params = {
@@ -233,8 +233,9 @@ class TestMain:
             main()
 
         call_kwargs = mock_module.exit_json.call_args[1]
-        assert call_kwargs["status"] == 404
-        assert "error" in call_kwargs
+        # 404 returns defaults — no service set, raw stays as default
+        assert "service" not in call_kwargs
+        assert call_kwargs["changed"] is False
 
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_service_info.Connection")
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_service_info.AnsibleModule")
@@ -267,7 +268,6 @@ class TestMain:
             main()
 
         call_kwargs = mock_module.exit_json.call_args[1]
-        assert call_kwargs["status"] == 200
         assert len(call_kwargs["items"]) == 2
 
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_service_info.Connection")
@@ -336,7 +336,7 @@ class TestMain:
             main()
 
         call_kwargs = mock_module.exit_json.call_args[1]
-        assert call_kwargs["status"] == 200
+        assert call_kwargs["changed"] is False
 
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_service_info.Connection")
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_service_info.AnsibleModule")
@@ -540,7 +540,10 @@ class TestMain:
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_service_info.Connection")
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_service_info.AnsibleModule")
     def test_main_list_error_response(self, mock_module_class, mock_connection):
-        """Test main handles error response on list."""
+        """Test main handles error response on list.
+
+        Non-2xx (except 404) causes ItsiRequest to call module.fail_json().
+        """
         mock_module = MagicMock()
         mock_module._socket_path = "/tmp/socket"
         mock_module.params = {
@@ -564,13 +567,11 @@ class TestMain:
         }
         mock_connection.return_value = mock_conn
 
-        with pytest.raises(AnsibleExitJson):
+        with pytest.raises(AnsibleFailJson):
             main()
 
-        call_kwargs = mock_module.exit_json.call_args[1]
-        assert call_kwargs["status"] == 500
-        assert "error" in call_kwargs
-        assert call_kwargs["items"] == []
+        mock_module.fail_json.assert_called_once()
+        assert "500" in mock_module.fail_json.call_args[1]["msg"]
 
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_service_info.Connection")
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_service_info.AnsibleModule")
@@ -608,14 +609,16 @@ class TestMain:
             main()
 
         call_kwargs = mock_module.exit_json.call_args[1]
-        assert call_kwargs["status"] == 200
         assert len(call_kwargs["items"]) == 2
         assert call_kwargs["paging"]["size"] == 2
 
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_service_info.Connection")
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_service_info.AnsibleModule")
     def test_main_get_by_key_with_error_context(self, mock_module_class, mock_connection):
-        """Test main includes error context from response."""
+        """Test main fails on non-2xx when getting by key.
+
+        ItsiRequest calls module.fail_json() for 400 and other non-2xx errors.
+        """
         mock_module = MagicMock()
         mock_module._socket_path = "/tmp/socket"
         mock_module.params = {
@@ -644,13 +647,11 @@ class TestMain:
         }
         mock_connection.return_value = mock_conn
 
-        with pytest.raises(AnsibleExitJson):
+        with pytest.raises(AnsibleFailJson):
             main()
 
-        call_kwargs = mock_module.exit_json.call_args[1]
-        assert call_kwargs["status"] == 400
-        assert "error" in call_kwargs
-        assert "error_context" in call_kwargs
+        mock_module.fail_json.assert_called_once()
+        assert "400" in mock_module.fail_json.call_args[1]["msg"]
 
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_service_info.Connection")
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_service_info.AnsibleModule")
@@ -791,14 +792,13 @@ class TestMain:
             main()
 
         call_kwargs = mock_module.exit_json.call_args[1]
-        assert call_kwargs["status"] == 200
         # Should still return items (empty since response wasn't a list)
         assert "items" in call_kwargs
 
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_service_info.Connection")
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_service_info.AnsibleModule")
     def test_main_get_by_key_details_in_error(self, mock_module_class, mock_connection):
-        """Test main includes details in error context."""
+        """Test main fails with fail_json for 403 on get by key."""
         mock_module = MagicMock()
         mock_module._socket_path = "/tmp/socket"
         mock_module.params = {
@@ -827,17 +827,16 @@ class TestMain:
         }
         mock_connection.return_value = mock_conn
 
-        with pytest.raises(AnsibleExitJson):
+        with pytest.raises(AnsibleFailJson):
             main()
 
-        call_kwargs = mock_module.exit_json.call_args[1]
-        assert call_kwargs["status"] == 403
-        assert call_kwargs["error_context"] == "Insufficient permissions"
+        mock_module.fail_json.assert_called_once()
+        assert "403" in mock_module.fail_json.call_args[1]["msg"]
 
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_service_info.Connection")
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_service_info.AnsibleModule")
     def test_main_list_error_includes_request_info(self, mock_module_class, mock_connection):
-        """Test main includes request info on error for debugging."""
+        """Test main fails with fail_json for 500 on list (error in msg)."""
         mock_module = MagicMock()
         mock_module._socket_path = "/tmp/socket"
         mock_module.params = {
@@ -861,10 +860,9 @@ class TestMain:
         }
         mock_connection.return_value = mock_conn
 
-        with pytest.raises(AnsibleExitJson):
+        with pytest.raises(AnsibleFailJson):
             main()
 
-        call_kwargs = mock_module.exit_json.call_args[1]
-        assert "request" in call_kwargs
-        assert "path" in call_kwargs["request"]
-        assert "params" in call_kwargs["request"]
+        mock_module.fail_json.assert_called_once()
+        assert "500" in mock_module.fail_json.call_args[1]["msg"]
+        assert "Server error" in mock_module.fail_json.call_args[1]["msg"]

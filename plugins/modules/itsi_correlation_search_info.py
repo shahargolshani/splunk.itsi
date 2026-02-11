@@ -134,112 +134,14 @@ correlation_search:
   sample: {"name": "test-search", "disabled": "0", "search": "index=main | head 1"}
 """
 
-import json
 
 from ansible.module_utils.basic import AnsibleModule
 from ansible.module_utils.connection import Connection
-from ansible.module_utils.six.moves.urllib.parse import quote, quote_plus
-from ansible_collections.splunk.itsi.plugins.module_utils.itsi_request import ItsiRequest
-from ansible_collections.splunk.itsi.plugins.module_utils.itsi_utils import (
-    flatten_search_object,
-    normalize_to_list,
+from ansible_collections.splunk.itsi.plugins.module_utils.correlation_search_utils import (
+    get_correlation_search,
+    list_correlation_searches,
 )
-
-# EMI endpoint for all correlation search operations
-BASE_EVENT_MGMT = "servicesNS/nobody/SA-ITOA/event_management_interface/correlation_search"
-
-
-def get_correlation_search(client, search_identifier, fields=None):
-    """Get correlation search by ID using direct path lookup."""
-    path = f"{BASE_EVENT_MGMT}/{quote_plus(search_identifier)}"
-    params = {"output_mode": "json"}
-    if fields:
-        params["fields"] = ",".join(fields) if isinstance(fields, (list, tuple)) else fields
-    status, data = client.get(path, params=params)
-    if status == 200 and isinstance(data, dict):
-        flat = flatten_search_object(data)
-        if isinstance(data, dict) and "_response_headers" in data:
-            flat["_response_headers"] = data.get("_response_headers", {})
-        return 200, flat
-    return status, data
-
-
-def get_correlation_search_by_name(client, name, fields=None):
-    """
-    Query correlation search by name using direct path lookup.
-
-    Uses quote to properly encode spaces as %20 in the URL path.
-
-    Args:
-        client: ItsiRequest instance
-        name: The correlation search name (can contain spaces)
-        fields: Optional comma-separated field list
-
-    Returns:
-        tuple: (status_code, correlation_search_dict or error)
-    """
-    # Use quote with safe='' to encode spaces as '%20' in the URL path
-    path = f"{BASE_EVENT_MGMT}/{quote(name, safe='')}"
-    params = {"output_mode": "json"}
-
-    if fields:
-        params["fields"] = ",".join(fields) if isinstance(fields, (list, tuple)) else fields
-
-    status, data = client.get(path, params=params)
-
-    if status == 200 and isinstance(data, dict):
-        flat = flatten_search_object(data)
-        if "_response_headers" in data:
-            flat["_response_headers"] = data.get("_response_headers", {})
-        return 200, flat
-
-    return status, data
-
-
-def list_correlation_searches(client, fields=None, filter_data=None, count=None):
-    """
-    List correlation searches with optional filtering.
-
-    Args:
-        client: ItsiRequest instance
-        fields: Optional comma-separated field list
-        filter_data: Optional MongoDB-style filter JSON string
-        count: Optional count for number of results
-
-    Returns:
-        tuple: (status_code, correlation_searches_list)
-    """
-    params = {"output_mode": "json"}
-
-    if fields:
-        params["fields"] = ",".join(fields) if isinstance(fields, (list, tuple)) else fields
-    if filter_data:
-        params["filter_data"] = filter_data
-    if count:
-        params["count"] = count
-
-    status, data = client.get(BASE_EVENT_MGMT, params=params)
-
-    if status == 200:
-        entries = normalize_to_list(data)
-        results = [flatten_search_object(e) for e in entries]
-        result_data = {
-            "correlation_searches": results,
-            "_response_headers": data.get("_response_headers", {}) if isinstance(data, dict) else {},
-        }
-        return status, result_data
-    else:
-        return status, data
-
-
-def _get_headers(data) -> dict:
-    """Extract headers from response data safely."""
-    return data.get("_response_headers", {}) if isinstance(data, dict) else {}
-
-
-def _to_body(data) -> str:
-    """Convert data to JSON body string."""
-    return json.dumps(data) if isinstance(data, (dict, list)) else str(data)
+from ansible_collections.splunk.itsi.plugins.module_utils.itsi_request import ItsiRequest
 
 
 def _query_single_search(client, params: dict, result: dict):
@@ -249,30 +151,32 @@ def _query_single_search(client, params: dict, result: dict):
     fields = params.get("fields")
 
     if correlation_search_id:
-        status, data = get_correlation_search(client, correlation_search_id, fields)
+        api_result = get_correlation_search(client, correlation_search_id, fields)
     else:
-        status, data = get_correlation_search_by_name(client, name, fields)
+        api_result = get_correlation_search(client, name, fields, use_name_encoding=True)
 
-    result.update({"status": status, "headers": _get_headers(data), "body": _to_body(data)})
-    result["correlation_search"] = data if status == 200 else None
+    if api_result is None:
+        result.update({"status": 0, "headers": {}, "body": {}, "correlation_search": None})
+        return
+
+    status, headers, body = api_result
+    result.update({"status": status, "headers": headers, "body": body, "correlation_search": body})
 
 
 def _query_all_searches(client, params: dict, result: dict):
     """List all correlation searches."""
-    fields = params.get("fields")
-    filter_data = params.get("filter_data")
-    count = params.get("count")
+    api_result = list_correlation_searches(client, params.get("fields"), params.get("filter_data"), params.get("count"))
+    if api_result is None:
+        result.update({"status": 0, "headers": {}, "body": {}, "correlation_searches": []})
+        return
 
-    status, data = list_correlation_searches(client, fields, filter_data, count)
-    if not isinstance(data, dict):
-        data = {"results": data, "_response_headers": {}}
-
+    status, headers, body = api_result
     result.update(
         {
             "status": status,
-            "headers": data.get("_response_headers", {}),
-            "body": _to_body(data),
-            "correlation_searches": data.get("correlation_searches", []),
+            "headers": headers,
+            "body": body,
+            "correlation_searches": body.get("correlation_searches", []) if isinstance(body, dict) else [],
         },
     )
 
@@ -292,24 +196,16 @@ def main():
     if not getattr(module, "_socket_path", None):
         module.fail_json(msg="Use ansible_connection=httpapi and ansible_network_os=splunk.itsi.itsi_api_client")
 
-    try:
-        client = ItsiRequest(Connection(module._socket_path))
-        result = {"changed": False, "status": 0, "headers": {}, "body": ""}
+    client = ItsiRequest(Connection(module._socket_path), module)
+    result = {"changed": False, "status": 0, "headers": {}, "body": {}}
 
-        search_identifier = module.params.get("correlation_search_id") or module.params.get("name")
-        if search_identifier:
-            _query_single_search(client, module.params, result)
-        else:
-            _query_all_searches(client, module.params, result)
+    search_identifier = module.params.get("correlation_search_id") or module.params.get("name")
+    if search_identifier:
+        _query_single_search(client, module.params, result)
+    else:
+        _query_all_searches(client, module.params, result)
 
-        module.exit_json(**result)
-
-    except Exception as e:
-        module.fail_json(
-            msg=f"Exception occurred: {str(e)}",
-            correlation_search_id=module.params.get("correlation_search_id"),
-            name=module.params.get("name"),
-        )
+    module.exit_json(**result)
 
 
 if __name__ == "__main__":
