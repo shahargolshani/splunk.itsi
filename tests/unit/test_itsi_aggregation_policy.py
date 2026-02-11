@@ -23,13 +23,14 @@ class AnsibleFailJson(SystemExit):
     pass
 
 
-# Import shared utilities from module_utils
-from ansible_collections.splunk.itsi.plugins.module_utils.itsi_request import ItsiRequest
-from ansible_collections.splunk.itsi.plugins.module_utils.itsi_utils import (
+from ansible_collections.splunk.itsi.plugins.module_utils.aggregation_policy_utils import (
     flatten_policy_object,
     get_aggregation_policy_by_id,
     normalize_policy_list,
 )
+
+# Import shared utilities from module_utils
+from ansible_collections.splunk.itsi.plugins.module_utils.itsi_request import ItsiRequest
 
 # Import module functions for testing
 from ansible_collections.splunk.itsi.plugins.modules.itsi_aggregation_policy import (
@@ -37,7 +38,6 @@ from ansible_collections.splunk.itsi.plugins.modules.itsi_aggregation_policy imp
     _diff_canonical,
     create_aggregation_policy,
     delete_aggregation_policy,
-    ensure_present,
     main,
     update_aggregation_policy,
 )
@@ -72,6 +72,13 @@ SAMPLE_POLICY_WITH_CONTENT = {
     "links": {},
     "acl": {},
 }
+
+
+def _mock_module():
+    """Create a MagicMock AnsibleModule for ItsiRequest."""
+    module = MagicMock()
+    module.fail_json.side_effect = AnsibleFailJson
+    return module
 
 
 class TestNormalizePolicyList:
@@ -330,7 +337,10 @@ class TestGetAggregationPolicyById:
             "headers": {},
         }
 
-        status, data = get_aggregation_policy_by_id(ItsiRequest(mock_conn), "test_policy_id")
+        status, headers, data = get_aggregation_policy_by_id(
+            ItsiRequest(mock_conn, _mock_module()),
+            "test_policy_id",
+        )
 
         assert status == 200
         assert data["title"] == "Test Policy"
@@ -344,13 +354,17 @@ class TestGetAggregationPolicyById:
             "headers": {},
         }
 
-        get_aggregation_policy_by_id(ItsiRequest(mock_conn), "test_policy_id", fields="title,disabled")
+        get_aggregation_policy_by_id(
+            ItsiRequest(mock_conn, _mock_module()),
+            "test_policy_id",
+            fields="title,disabled",
+        )
 
         call_args = mock_conn.send_request.call_args
         assert "fields=title%2Cdisabled" in call_args[0][0]
 
     def test_get_by_id_not_found(self):
-        """Test getting non-existent policy."""
+        """Test getting non-existent policy returns None."""
         mock_conn = MagicMock()
         mock_conn.send_request.return_value = {
             "status": 404,
@@ -358,9 +372,12 @@ class TestGetAggregationPolicyById:
             "headers": {},
         }
 
-        status, data = get_aggregation_policy_by_id(ItsiRequest(mock_conn), "nonexistent")
+        result = get_aggregation_policy_by_id(
+            ItsiRequest(mock_conn, _mock_module()),
+            "nonexistent",
+        )
 
-        assert status == 404
+        assert result is None
 
     def test_get_by_id_url_encoding(self):
         """Test policy_id is URL encoded."""
@@ -371,7 +388,10 @@ class TestGetAggregationPolicyById:
             "headers": {},
         }
 
-        get_aggregation_policy_by_id(ItsiRequest(mock_conn), "policy with spaces")
+        get_aggregation_policy_by_id(
+            ItsiRequest(mock_conn, _mock_module()),
+            "policy with spaces",
+        )
 
         call_args = mock_conn.send_request.call_args
         assert "policy+with+spaces" in call_args[0][0]
@@ -390,7 +410,10 @@ class TestCreateAggregationPolicy:
         }
 
         policy_data = {"title": "New Policy"}
-        status, data = create_aggregation_policy(ItsiRequest(mock_conn), policy_data)
+        status, headers, data = create_aggregation_policy(
+            ItsiRequest(mock_conn, _mock_module()),
+            policy_data,
+        )
 
         assert status == 200
         call_args = mock_conn.send_request.call_args
@@ -405,7 +428,7 @@ class TestCreateAggregationPolicy:
             "headers": {},
         }
 
-        create_aggregation_policy(ItsiRequest(mock_conn), {"title": "Test"})
+        create_aggregation_policy(ItsiRequest(mock_conn, _mock_module()), {"title": "Test"})
 
         call_args = mock_conn.send_request.call_args
         payload = json.loads(call_args[1]["body"])
@@ -430,7 +453,7 @@ class TestCreateAggregationPolicy:
             "priority": 8,
             "filter_criteria": {"condition": "OR", "items": []},
         }
-        create_aggregation_policy(ItsiRequest(mock_conn), policy_data)
+        create_aggregation_policy(ItsiRequest(mock_conn, _mock_module()), policy_data)
 
         call_args = mock_conn.send_request.call_args
         payload = json.loads(call_args[1]["body"])
@@ -445,46 +468,64 @@ class TestUpdateAggregationPolicy:
     def test_update_basic(self):
         """Test basic update."""
         mock_conn = MagicMock()
-        mock_conn.send_request.side_effect = [
-            {"status": 200, "body": json.dumps(SAMPLE_POLICY), "headers": {}},
-            {"status": 200, "body": json.dumps(SAMPLE_POLICY), "headers": {}},
-        ]
+        mock_conn.send_request.return_value = {
+            "status": 200,
+            "body": json.dumps(SAMPLE_POLICY),
+            "headers": {},
+        }
 
         update_data = {"disabled": 1}
-        status, data = update_aggregation_policy(ItsiRequest(mock_conn), "test_policy_id", update_data)
+        status, headers, data = update_aggregation_policy(
+            ItsiRequest(mock_conn, _mock_module()),
+            "test_policy_id",
+            update_data,
+            SAMPLE_POLICY,
+        )
 
         assert status == 200
 
     def test_update_uses_partial_data(self):
         """Test update uses is_partial_data parameter."""
         mock_conn = MagicMock()
-        mock_conn.send_request.side_effect = [
-            {"status": 200, "body": json.dumps(SAMPLE_POLICY), "headers": {}},
-            {"status": 200, "body": "{}", "headers": {}},
-        ]
+        mock_conn.send_request.return_value = {
+            "status": 200,
+            "body": "{}",
+            "headers": {},
+        }
 
-        update_aggregation_policy(ItsiRequest(mock_conn), "test_policy_id", {"disabled": 0})
+        update_aggregation_policy(
+            ItsiRequest(mock_conn, _mock_module()),
+            "test_policy_id",
+            {"disabled": 0},
+            SAMPLE_POLICY,
+        )
 
-        call_args = mock_conn.send_request.call_args_list[1]
+        call_args = mock_conn.send_request.call_args
         assert "is_partial_data=1" in call_args[0][0]
 
     def test_update_merges_with_current(self):
         """Test update merges with current values."""
         mock_conn = MagicMock()
-        mock_conn.send_request.side_effect = [
-            {"status": 200, "body": json.dumps(SAMPLE_POLICY), "headers": {}},
-            {"status": 200, "body": "{}", "headers": {}},
-        ]
+        mock_conn.send_request.return_value = {
+            "status": 200,
+            "body": "{}",
+            "headers": {},
+        }
 
-        update_aggregation_policy(ItsiRequest(mock_conn), "test_policy_id", {"description": "New desc"})
+        update_aggregation_policy(
+            ItsiRequest(mock_conn, _mock_module()),
+            "test_policy_id",
+            {"description": "New desc"},
+            SAMPLE_POLICY,
+        )
 
-        call_args = mock_conn.send_request.call_args_list[1]
+        call_args = mock_conn.send_request.call_args
         payload = json.loads(call_args[1]["body"])
         assert payload["title"] == "Test Policy"  # From current
         assert payload["description"] == "New desc"  # Updated
 
     def test_update_not_found(self):
-        """Test update when policy not found."""
+        """Test update when policy not found (POST returns 404)."""
         mock_conn = MagicMock()
         mock_conn.send_request.return_value = {
             "status": 404,
@@ -492,9 +533,14 @@ class TestUpdateAggregationPolicy:
             "headers": {},
         }
 
-        status, data = update_aggregation_policy(ItsiRequest(mock_conn), "nonexistent", {"disabled": 1})
+        result = update_aggregation_policy(
+            ItsiRequest(mock_conn, _mock_module()),
+            "nonexistent",
+            {"disabled": 1},
+            {},
+        )
 
-        assert status == 404
+        assert result is None
 
 
 class TestDeleteAggregationPolicy:
@@ -509,7 +555,10 @@ class TestDeleteAggregationPolicy:
             "headers": {},
         }
 
-        status, data = delete_aggregation_policy(ItsiRequest(mock_conn), "test_policy_id")
+        status, headers, data = delete_aggregation_policy(
+            ItsiRequest(mock_conn, _mock_module()),
+            "test_policy_id",
+        )
 
         assert status == 204
         call_args = mock_conn.send_request.call_args
@@ -524,99 +573,13 @@ class TestDeleteAggregationPolicy:
             "headers": {},
         }
 
-        delete_aggregation_policy(ItsiRequest(mock_conn), "policy with spaces")
+        delete_aggregation_policy(
+            ItsiRequest(mock_conn, _mock_module()),
+            "policy with spaces",
+        )
 
         call_args = mock_conn.send_request.call_args
         assert "policy+with+spaces" in call_args[0][0]
-
-
-class TestEnsurePresent:
-    """Tests for ensure_present function."""
-
-    def test_ensure_present_create_without_policy_id(self):
-        """Test ensure_present creates new policy when no policy_id."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": json.dumps(SAMPLE_POLICY),
-            "headers": {},
-        }
-
-        result = {}
-        desired_data = {"title": "New Policy"}
-        ensure_present(ItsiRequest(mock_conn), None, desired_data, result)
-
-        assert result["operation"] == "create"
-        assert result["changed"] is True
-
-    def test_ensure_present_no_change_needed(self):
-        """Test ensure_present when no change is needed."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": json.dumps(SAMPLE_POLICY),
-            "headers": {},
-        }
-
-        result = {}
-        # Desired matches current
-        desired_data = {
-            "title": "Test Policy",
-            "disabled": False,
-            "group_severity": "medium",
-        }
-        ensure_present(ItsiRequest(mock_conn), "test_policy_id", desired_data, result)
-
-        assert result["operation"] == "no_change"
-        assert result["changed"] is False
-
-    def test_ensure_present_update_needed(self):
-        """Test ensure_present when update is needed."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.side_effect = [
-            {"status": 200, "body": json.dumps(SAMPLE_POLICY), "headers": {}},
-            {"status": 200, "body": json.dumps(SAMPLE_POLICY), "headers": {}},
-            {"status": 200, "body": json.dumps(SAMPLE_POLICY), "headers": {}},
-        ]
-
-        result = {}
-        desired_data = {"description": "New description"}
-        ensure_present(ItsiRequest(mock_conn), "test_policy_id", desired_data, result)
-
-        assert result["operation"] == "update"
-        assert result["changed"] is True
-        assert "diff" in result
-
-    def test_ensure_present_policy_not_found_returns_error(self):
-        """Test ensure_present returns error when policy_id not found."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 404,
-            "body": json.dumps({"error": "Not found"}),
-            "headers": {},
-        }
-
-        result = {}
-        ensure_present(ItsiRequest(mock_conn), "nonexistent_id", {"description": "test"}, result)
-
-        assert result["operation"] == "error"
-        assert result["status"] == 404
-        assert result["changed"] is False
-
-    def test_ensure_present_error_response(self):
-        """Test ensure_present with error response."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 500,
-            "body": json.dumps({"error": "Server error"}),
-            "headers": {},
-        }
-
-        result = {}
-        ensure_present(ItsiRequest(mock_conn), "test_policy_id", {"title": "Test"}, result)
-
-        assert result["operation"] == "error"
-        assert result["status"] == 500
 
 
 class TestMain:
@@ -664,8 +627,10 @@ class TestMain:
 
         mock_module.exit_json.assert_called_once()
         call_kwargs = mock_module.exit_json.call_args[1]
-        assert call_kwargs["operation"] == "create"
         assert call_kwargs["changed"] is True
+        assert "aggregation_policies" in call_kwargs
+        assert isinstance(call_kwargs["aggregation_policies"], list)
+        assert len(call_kwargs["aggregation_policies"]) == 1
 
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_aggregation_policy.Connection")
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_aggregation_policy.AnsibleModule")
@@ -709,8 +674,8 @@ class TestMain:
 
         mock_module.exit_json.assert_called_once()
         call_kwargs = mock_module.exit_json.call_args[1]
-        assert call_kwargs["operation"] == "update"
         assert call_kwargs["changed"] is True
+        assert "diff" in call_kwargs
 
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_aggregation_policy.Connection")
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_aggregation_policy.AnsibleModule")
@@ -788,7 +753,6 @@ class TestMain:
 
         mock_module.exit_json.assert_called_once()
         call_kwargs = mock_module.exit_json.call_args[1]
-        assert call_kwargs["operation"] == "delete"
         assert call_kwargs["changed"] is True
 
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_aggregation_policy.Connection")
@@ -834,7 +798,7 @@ class TestMain:
         mock_module.exit_json.assert_called_once()
         call_kwargs = mock_module.exit_json.call_args[1]
         assert call_kwargs["changed"] is False
-        assert call_kwargs["operation"] == "no_change"
+        assert "msg" in call_kwargs
 
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_aggregation_policy.Connection")
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_aggregation_policy.AnsibleModule")
@@ -996,7 +960,7 @@ class TestMain:
         mock_module.exit_json.assert_called_once()
         call_kwargs = mock_module.exit_json.call_args[1]
         assert call_kwargs["changed"] is True
-        assert call_kwargs["operation"] == "delete"
+        assert call_kwargs["check_mode"] is True
 
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_aggregation_policy.Connection")
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_aggregation_policy.AnsibleModule")
@@ -1029,11 +993,8 @@ class TestMain:
 
         mock_connection.side_effect = Exception("Connection failed")
 
-        with pytest.raises(AnsibleFailJson):
+        with pytest.raises(Exception, match="Connection failed"):
             main()
-
-        mock_module.fail_json.assert_called_once()
-        assert "Exception occurred" in mock_module.fail_json.call_args[1]["msg"]
 
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_aggregation_policy.Connection")
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_aggregation_policy.AnsibleModule")
@@ -1069,13 +1030,14 @@ class TestMain:
 
         mock_module.exit_json.assert_called_once()
         call_kwargs = mock_module.exit_json.call_args[1]
-        body = json.loads(call_kwargs["body"])
+        body = call_kwargs["body"]
+        assert isinstance(body, dict)
         assert body["custom_field"] == "custom_value"
 
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_aggregation_policy.Connection")
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_aggregation_policy.AnsibleModule")
-    def test_main_check_mode_error_when_policy_not_found(self, mock_module_class, mock_connection):
-        """Test main check mode returns error when policy_id not found."""
+    def test_main_check_mode_policy_not_found_treats_as_create(self, mock_module_class, mock_connection):
+        """Test main check mode treats not-found policy_id as create."""
         mock_module = MagicMock()
         mock_module._socket_path = "/tmp/socket"
         mock_module.params = {
@@ -1114,7 +1076,8 @@ class TestMain:
 
         mock_module.exit_json.assert_called_once()
         call_kwargs = mock_module.exit_json.call_args[1]
-        assert call_kwargs["operation"] == "error"
+        assert call_kwargs["operation"] == "create"
+        assert call_kwargs["check_mode"] is True
 
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_aggregation_policy.Connection")
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_aggregation_policy.AnsibleModule")
@@ -1150,7 +1113,8 @@ class TestMain:
 
         mock_module.exit_json.assert_called_once()
         call_kwargs = mock_module.exit_json.call_args[1]
-        body = json.loads(call_kwargs["body"])
+        body = call_kwargs["body"]
+        assert isinstance(body, dict)
         assert body["title"] == "Complete Policy"
         assert body["disabled"] is True
         assert body["group_severity"] == "high"

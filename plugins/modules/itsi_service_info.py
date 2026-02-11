@@ -100,10 +100,6 @@ service:
   description: First item from services when a single result is expected.
   type: dict
   returned: when a single result is found
-status:
-  description: HTTP status from the last request.
-  type: int
-  returned: always
 raw:
   description: Raw body parsed from the server response for the last call.
   type: raw
@@ -147,29 +143,6 @@ def _build_filter(module_params: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     return filter_obj or None
 
 
-def _extract_error_info(body: Dict[str, Any]) -> Dict[str, Any]:
-    """Extract error information from a response body.
-
-    Args:
-        body: Response body dict.
-
-    Returns:
-        Dict with 'error' and optionally 'error_context' keys.
-    """
-    info: Dict[str, Any] = {}
-    if "message" in body:
-        info["error"] = body.get("message")
-    elif "error" in body:
-        info["error"] = body.get("error")
-
-    if "context" in body:
-        info["error_context"] = body.get("context")
-    elif "details" in body:
-        info["error_context"] = body.get("details")
-
-    return info
-
-
 def _handle_get_by_id(
     client: ItsiRequest,
     service_id: str,
@@ -183,14 +156,12 @@ def _handle_get_by_id(
         result: Result dict to update.
     """
     path = f"{BASE}/{quote_plus(service_id)}"
-    status, body = client.get(path)
-    result["status"] = status
+    api_result = client.get(path)
+    if api_result is None:
+        return
+    _status, _headers, body = api_result
     result["raw"] = body
-
-    if isinstance(body, dict) and status != 200:
-        result.update(_extract_error_info(body))
-        result["request"] = {"path": path, "params": {}}
-    elif isinstance(body, dict):
+    if isinstance(body, dict):
         result["service"] = body
 
 
@@ -241,29 +212,21 @@ def _dedupe_fields(fields: List[Any]) -> str:
 
 def _parse_list_response(
     body: Any,
-    status: int,
-    params: Dict[str, Any],
     result: Dict[str, Any],
 ) -> None:
     """Parse a list response and update the result dict.
 
     Args:
         body: Response body.
-        status: HTTP status code.
-        params: Request parameters (for error reporting).
         result: Result dict to update.
     """
-    if isinstance(body, dict) and status != 200:
-        result.update(_extract_error_info(body))
-        result["request"] = {"path": BASE, "params": params}
-        result["items"] = []
-    elif isinstance(body, list):
+    if isinstance(body, list):
         result["items"] = body
     elif isinstance(body, dict) and "items" in body and "size" in body:
         result["paging"] = {"size": body.get("size"), "items": body.get("items")}
         result["items"] = body.get("items", [])
     else:
-        result["items"] = body if isinstance(body, list) else []
+        result["items"] = []
 
 
 def main() -> None:
@@ -287,27 +250,26 @@ def main() -> None:
             msg="Use ansible_connection=httpapi and ansible_network_os=splunk.itsi.itsi_api_client",
         )
 
-    client = ItsiRequest(Connection(module._socket_path))
+    client = ItsiRequest(Connection(module._socket_path), module)
     module_params = module.params
 
     result: Dict[str, Any] = {
         "changed": False,
-        "status": 0,
         "raw": {},
         "items": [],
     }
 
-    # Direct GET by key
     if module_params.get("service_id"):
         _handle_get_by_id(client, module_params["service_id"], result)
         module.exit_json(**result)
 
-    # List path
     params = _build_list_params(module_params)
-    status, body = client.get(BASE, params=params)
-    result["status"] = status
+    api_result = client.get(BASE, params=params)
+    if api_result is None:
+        module.exit_json(**result)
+    _status, _headers, body = api_result
     result["raw"] = body
-    _parse_list_response(body, status, params, result)
+    _parse_list_response(body, result)
 
     module.exit_json(**result)
 

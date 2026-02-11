@@ -3,9 +3,6 @@
 # Copyright (c) 2026 Splunk ITSI Ansible Collection maintainers
 """Unit tests for itsi_api_client httpapi plugin."""
 
-from __future__ import absolute_import, division, print_function
-
-__metaclass__ = type
 
 import base64
 import io

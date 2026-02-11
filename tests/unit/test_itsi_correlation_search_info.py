@@ -3,9 +3,6 @@
 # Copyright (c) 2026 Splunk ITSI Ansible Collection maintainers
 """Unit tests for itsi_correlation_search_info module."""
 
-from __future__ import absolute_import, division, print_function
-
-__metaclass__ = type
 
 import json
 from unittest.mock import MagicMock, patch
@@ -28,14 +25,24 @@ class AnsibleFailJson(SystemExit):
 
 
 # Import module functions for testing
-# Note: Tests for shared itsi_utils functions (flatten_search_entry, flatten_search_object,
+# Note: Tests for shared correlation_search_utils functions (flatten_search_entry, flatten_search_object,
 # normalize_to_list) are in test_itsi_correlation_search.py to avoid duplication.
 # Tests for ItsiRequest (request, response parsing, error handling) are in test_itsi_request.py.
 from ansible_collections.splunk.itsi.plugins.module_utils.itsi_request import ItsiRequest
-from ansible_collections.splunk.itsi.plugins.modules.itsi_correlation_search_info import (
+
+
+def _mock_module():
+    """Create a MagicMock AnsibleModule for ItsiRequest."""
+    module = MagicMock()
+    module.fail_json.side_effect = AnsibleFailJson
+    return module
+
+
+from ansible_collections.splunk.itsi.plugins.module_utils.correlation_search_utils import (
     get_correlation_search,
-    get_correlation_search_by_name,
     list_correlation_searches,
+)
+from ansible_collections.splunk.itsi.plugins.modules.itsi_correlation_search_info import (
     main,
 )
 
@@ -84,7 +91,7 @@ class TestGetCorrelationSearch:
             "headers": {"Content-Type": "application/json"},
         }
 
-        status, data = get_correlation_search(ItsiRequest(mock_conn), "test-search-id")
+        status, headers, data = get_correlation_search(ItsiRequest(mock_conn, _mock_module()), "test-search-id")
 
         assert status == 200
         assert data["search"] == "index=main | head 1"
@@ -99,7 +106,7 @@ class TestGetCorrelationSearch:
             "headers": {},
         }
 
-        get_correlation_search(ItsiRequest(mock_conn), "test-id", fields="name,disabled")
+        get_correlation_search(ItsiRequest(mock_conn, _mock_module()), "test-id", fields="name,disabled")
 
         call_args = mock_conn.send_request.call_args
         assert "fields=name%2Cdisabled" in call_args[0][0]
@@ -113,7 +120,7 @@ class TestGetCorrelationSearch:
             "headers": {},
         }
 
-        get_correlation_search(ItsiRequest(mock_conn), "test-id", fields=["name", "disabled"])
+        get_correlation_search(ItsiRequest(mock_conn, _mock_module()), "test-id", fields=["name", "disabled"])
 
         call_args = mock_conn.send_request.call_args
         assert "fields=name%2Cdisabled" in call_args[0][0]
@@ -127,12 +134,12 @@ class TestGetCorrelationSearch:
             "headers": {},
         }
 
-        status, data = get_correlation_search(ItsiRequest(mock_conn), "nonexistent")
+        result = get_correlation_search(ItsiRequest(mock_conn, _mock_module()), "nonexistent")
 
-        assert status == 404
+        assert result is None
 
-    def test_get_includes_response_headers(self):
-        """Test that response headers are included in result."""
+    def test_get_returns_headers_separately(self):
+        """Test that response headers are returned as separate tuple element."""
         mock_conn = MagicMock()
         mock_conn.send_request.return_value = {
             "status": 200,
@@ -140,13 +147,17 @@ class TestGetCorrelationSearch:
             "headers": {"X-Custom": "header"},
         }
 
-        status, data = get_correlation_search(ItsiRequest(mock_conn), "test-id")
+        status, headers, data = get_correlation_search(
+            ItsiRequest(mock_conn, _mock_module()),
+            "test-id",
+        )
 
-        assert "_response_headers" in data
+        assert status == 200
+        assert headers.get("X-Custom") == "header"
 
 
 class TestGetCorrelationSearchByName:
-    """Tests for get_correlation_search_by_name function."""
+    """Tests for get_correlation_search with use_name_encoding=True (by-name lookup)."""
 
     def test_get_by_name_success(self):
         """Test getting correlation search by name successfully."""
@@ -157,7 +168,11 @@ class TestGetCorrelationSearchByName:
             "headers": {},
         }
 
-        status, data = get_correlation_search_by_name(ItsiRequest(mock_conn), "Test Search")
+        status, headers, data = get_correlation_search(
+            ItsiRequest(mock_conn, _mock_module()),
+            "Test Search",
+            use_name_encoding=True,
+        )
 
         assert status == 200
         # Verify URL encoding uses %20 for spaces
@@ -173,7 +188,7 @@ class TestGetCorrelationSearchByName:
             "headers": {},
         }
 
-        get_correlation_search_by_name(ItsiRequest(mock_conn), "Test", fields="search,disabled")
+        get_correlation_search(ItsiRequest(mock_conn, _mock_module()), "Test", fields="search,disabled", use_name_encoding=True)
 
         call_args = mock_conn.send_request.call_args
         assert "fields=search%2Cdisabled" in call_args[0][0]
@@ -187,7 +202,7 @@ class TestGetCorrelationSearchByName:
             "headers": {},
         }
 
-        get_correlation_search_by_name(ItsiRequest(mock_conn), "Test", fields=["search", "disabled"])
+        get_correlation_search(ItsiRequest(mock_conn, _mock_module()), "Test", fields=["search", "disabled"], use_name_encoding=True)
 
         call_args = mock_conn.send_request.call_args
         assert "fields=search%2Cdisabled" in call_args[0][0]
@@ -201,9 +216,13 @@ class TestGetCorrelationSearchByName:
             "headers": {},
         }
 
-        status, data = get_correlation_search_by_name(ItsiRequest(mock_conn), "Nonexistent")
+        result = get_correlation_search(
+            ItsiRequest(mock_conn, _mock_module()),
+            "Nonexistent",
+            use_name_encoding=True,
+        )
 
-        assert status == 404
+        assert result is None
 
 
 class TestListCorrelationSearches:
@@ -218,7 +237,7 @@ class TestListCorrelationSearches:
             "headers": {},
         }
 
-        status, data = list_correlation_searches(ItsiRequest(mock_conn))
+        status, headers, data = list_correlation_searches(ItsiRequest(mock_conn, _mock_module()))
 
         assert status == 200
         assert "correlation_searches" in data
@@ -233,7 +252,7 @@ class TestListCorrelationSearches:
             "headers": {},
         }
 
-        list_correlation_searches(ItsiRequest(mock_conn), fields="name,search")
+        list_correlation_searches(ItsiRequest(mock_conn, _mock_module()), fields="name,search")
 
         call_args = mock_conn.send_request.call_args
         assert "fields=name%2Csearch" in call_args[0][0]
@@ -247,7 +266,7 @@ class TestListCorrelationSearches:
             "headers": {},
         }
 
-        list_correlation_searches(ItsiRequest(mock_conn), fields=("name", "search"))
+        list_correlation_searches(ItsiRequest(mock_conn, _mock_module()), fields=("name", "search"))
 
         call_args = mock_conn.send_request.call_args
         assert "fields=name%2Csearch" in call_args[0][0]
@@ -261,7 +280,7 @@ class TestListCorrelationSearches:
             "headers": {},
         }
 
-        list_correlation_searches(ItsiRequest(mock_conn), filter_data='{"disabled": "0"}')
+        list_correlation_searches(ItsiRequest(mock_conn, _mock_module()), filter_data='{"disabled": "0"}')
 
         call_args = mock_conn.send_request.call_args
         assert "filter_data" in call_args[0][0]
@@ -275,13 +294,13 @@ class TestListCorrelationSearches:
             "headers": {},
         }
 
-        list_correlation_searches(ItsiRequest(mock_conn), count=10)
+        list_correlation_searches(ItsiRequest(mock_conn, _mock_module()), count=10)
 
         call_args = mock_conn.send_request.call_args
         assert "count=10" in call_args[0][0]
 
     def test_list_error_response(self):
-        """Test listing with error response."""
+        """Test listing with error response (500 triggers fail_json)."""
         mock_conn = MagicMock()
         mock_conn.send_request.return_value = {
             "status": 500,
@@ -289,9 +308,8 @@ class TestListCorrelationSearches:
             "headers": {},
         }
 
-        status, data = list_correlation_searches(ItsiRequest(mock_conn))
-
-        assert status == 500
+        with pytest.raises(AnsibleFailJson):
+            list_correlation_searches(ItsiRequest(mock_conn, _mock_module()))
 
     def test_list_with_results_list(self):
         """Test listing when response has results list."""
@@ -306,7 +324,7 @@ class TestListCorrelationSearches:
             "headers": {},
         }
 
-        status, data = list_correlation_searches(ItsiRequest(mock_conn))
+        status, headers, data = list_correlation_searches(ItsiRequest(mock_conn, _mock_module()))
 
         assert status == 200
         assert len(data["correlation_searches"]) == 2
@@ -468,7 +486,6 @@ class TestMain:
 
         mock_module.exit_json.assert_called_once()
         call_kwargs = mock_module.exit_json.call_args[1]
-        assert call_kwargs["status"] == 404
         assert call_kwargs["correlation_search"] is None
 
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_correlation_search_info.Connection")
@@ -490,11 +507,8 @@ class TestMain:
 
         mock_connection.side_effect = Exception("Connection failed")
 
-        with pytest.raises(AnsibleFailJson):
+        with pytest.raises(Exception):
             main()
-
-        mock_module.fail_json.assert_called_once()
-        assert "Exception occurred" in mock_module.fail_json.call_args[1]["msg"]
 
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_correlation_search_info.Connection")
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_correlation_search_info.AnsibleModule")

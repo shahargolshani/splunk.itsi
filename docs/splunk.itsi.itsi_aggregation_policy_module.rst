@@ -359,12 +359,12 @@ Examples
           items: []
         state: present
       register: create_result
-    # Note: create_result.aggregation_policy._key contains the generated policy_id
+    # Note: create_result.aggregation_policies[0]._key contains the generated policy_id
 
     # Update existing aggregation policy (policy_id required, title optional)
     - name: Update aggregation policy settings
       splunk.itsi.itsi_aggregation_policy:
-        policy_id: "{{ create_result.aggregation_policy._key }}"
+        policy_id: "{{ create_result.aggregation_policies[0]._key }}"
         group_severity: "high"
         disabled: false
         state: present
@@ -384,7 +384,7 @@ Examples
     # Delete aggregation policy (policy_id required)
     - name: Remove aggregation policy
       splunk.itsi.itsi_aggregation_policy:
-        policy_id: "{{ create_result.aggregation_policy._key }}"
+        policy_id: "{{ create_result.aggregation_policies[0]._key }}"
         state: absent
       register: delete_result
 
@@ -415,18 +415,19 @@ Common return values are documented `here <https://docs.ansible.com/ansible/late
             <tr>
                 <td colspan="1">
                     <div class="ansibleOptionAnchor" id="return-"></div>
-                    <b>aggregation_policy</b>
+                    <b>aggregation_policies</b>
                     <a class="ansibleOptionLink" href="#return-" title="Permalink to this return value"></a>
                     <div style="font-size: small">
-                      <span style="color: purple">dictionary</span>
+                      <span style="color: purple">list</span>
+                       / <span style="color: purple">elements=dictionary</span>
                     </div>
                 </td>
                 <td>when operation succeeded</td>
                 <td>
-                            <div>The aggregation policy data after the operation</div>
+                            <div>List containing the aggregation policy data after the operation</div>
                     <br/>
                         <div style="font-size: smaller"><b>Sample:</b></div>
-                        <div style="font-size: smaller; color: blue; word-wrap: break-word; word-break: break-all;">{&#x27;title&#x27;: &#x27;Default Policy&#x27;, &#x27;description&#x27;: &#x27;Default aggregation policy&#x27;, &#x27;disabled&#x27;: 0, &#x27;_key&#x27;: &#x27;itsi_default_policy&#x27;}</div>
+                        <div style="font-size: smaller; color: blue; word-wrap: break-word; word-break: break-all;">[{&#x27;title&#x27;: &#x27;Default Policy&#x27;, &#x27;description&#x27;: &#x27;Default aggregation policy&#x27;, &#x27;disabled&#x27;: 0, &#x27;_key&#x27;: &#x27;itsi_default_policy&#x27;}]</div>
                 </td>
             </tr>
             <tr>

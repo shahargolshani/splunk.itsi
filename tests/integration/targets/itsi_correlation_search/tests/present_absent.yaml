@@ -25,13 +25,11 @@
       check_mode: true
       register: check_mode_create_result
 
-    - name: "Step 1 - Assert check mode create returns changed=true and operation=create"
+    - name: "Step 1 - Assert check mode create returns changed=true"
       ansible.builtin.assert:
         that:
           - check_mode_create_result.changed == true
-          - check_mode_create_result.operation == 'create'
-          - check_mode_create_result.status == 200
-        fail_msg: "Check mode create should report changed=true and operation=create"
+        fail_msg: "Check mode create should report changed=true"
         success_msg: "Check mode create correctly reports would create"
 
     - name: "Step 1 - Verify correlation search does NOT exist after check mode (using info module)"
@@ -42,7 +40,7 @@
     - name: "Step 1 - Assert correlation search was not actually created in check mode"
       ansible.builtin.assert:
         that:
-          - verify_not_created.status == 404 or verify_not_created.correlation_search is none
+          - verify_not_created.correlation_search is none
         fail_msg: "Correlation search should NOT exist after check mode"
         success_msg: "Verified: Check mode did not create the correlation search"
 
@@ -66,8 +64,6 @@
       ansible.builtin.assert:
         that:
           - create_result.changed == true
-          - create_result.operation == 'create'
-          - create_result.status == 200
         fail_msg: "Create operation should succeed with changed=true"
         success_msg: "Create operation succeeded"
 
@@ -91,7 +87,6 @@
       ansible.builtin.assert:
         that:
           - idempotent_result.changed == false
-          - idempotent_result.operation == 'no_change'
         fail_msg: "Idempotency failed - second run should not report changes"
         success_msg: "Idempotency verified - no changes on second run"
 
@@ -111,8 +106,6 @@
       ansible.builtin.assert:
         that:
           - update_result.changed == true
-          - update_result.operation == 'update'
-          - update_result.status == 200
         fail_msg: "Update operation should succeed with changed=true"
         success_msg: "Update operation succeeded"
 
@@ -124,7 +117,6 @@
     - name: "Step 4 - Assert updated values are correct"
       ansible.builtin.assert:
         that:
-          - info_after_update.status == 200
           - info_after_update.correlation_search is defined
         fail_msg: "Info module should return updated correlation search"
         success_msg: "Verified: Correlation search was updated successfully"
@@ -150,7 +142,6 @@
       ansible.builtin.assert:
         that:
           - update_idempotent_result.changed == false
-          - update_idempotent_result.operation == 'no_change'
         fail_msg: "Update idempotency failed - second update should not report changes"
         success_msg: "Update idempotency verified - no changes on second update"
 
@@ -166,7 +157,6 @@
       ansible.builtin.assert:
         that:
           - info_by_name.changed == false
-          - info_by_name.status == 200
           - info_by_name.correlation_search is defined
           - info_by_name.correlation_search is not none
         fail_msg: "Info module query by name should succeed"
@@ -180,7 +170,6 @@
       ansible.builtin.assert:
         that:
           - info_list_all.changed == false
-          - info_list_all.status == 200
           - info_list_all.correlation_searches is defined
         fail_msg: "Info module list all should succeed"
         success_msg: "Info module list all succeeded - found {{ info_list_all.correlation_searches | length }} searches"
@@ -194,7 +183,6 @@
       ansible.builtin.assert:
         that:
           - info_limited.changed == false
-          - info_limited.status == 200
           - info_limited.correlation_searches is defined
           - info_limited.correlation_searches | length == 3
         fail_msg: "Info module limited query should return exactly 3 correlation searches, got {{ info_limited.correlation_searches | length | default(0) }}"
@@ -219,9 +207,8 @@
       ansible.builtin.assert:
         that:
           - check_mode_delete_result.changed == true
-          - check_mode_delete_result.operation == 'delete'
-          - check_mode_delete_result.status == 204
-        fail_msg: "Check mode delete should report changed=true and operation=delete"
+          - check_mode_delete_result.check_mode == true
+        fail_msg: "Check mode delete should report changed=true"
         success_msg: "Check mode delete correctly reports would delete"
 
     - name: "Step 7 - Verify correlation search still exists after check mode delete (using info module)"
@@ -232,7 +219,6 @@
     - name: "Step 7 - Assert correlation search was not deleted in check mode"
       ansible.builtin.assert:
         that:
-          - verify_still_exists.status == 200
           - verify_still_exists.correlation_search is defined
           - verify_still_exists.correlation_search is not none
         fail_msg: "Correlation search should still exist after check mode delete"
@@ -251,8 +237,6 @@
       ansible.builtin.assert:
         that:
           - delete_result.changed == true
-          - delete_result.operation == 'delete'
-          - delete_result.status == 204
         fail_msg: "Delete operation should succeed with changed=true"
         success_msg: "Delete operation succeeded"
 
@@ -269,8 +253,6 @@
       ansible.builtin.assert:
         that:
           - absent_idempotent_result.changed == false
-          - absent_idempotent_result.operation == 'no_change'
-          - absent_idempotent_result.status == 404
         fail_msg: "Idempotency failed - absent on non-existent should not report changes"
         success_msg: "Idempotency verified - no changes when already absent"
 
@@ -286,7 +268,7 @@
       ansible.builtin.assert:
         that:
           - info_after_delete.changed == false
-          - info_after_delete.status == 404 or info_after_delete.correlation_search is none
+          - info_after_delete.correlation_search is none
         fail_msg: "Correlation search should not exist after deletion"
         success_msg: "Verified: Correlation search no longer exists after deletion"
 
@@ -299,7 +281,7 @@
       ansible.builtin.assert:
         that:
           - info_nonexistent.changed == false
-          - info_nonexistent.status == 404 or info_nonexistent.correlation_search is none
+          - info_nonexistent.correlation_search is none
         fail_msg: "Non-existent query should be handled gracefully"
         success_msg: "Non-existent query handled gracefully"
 
