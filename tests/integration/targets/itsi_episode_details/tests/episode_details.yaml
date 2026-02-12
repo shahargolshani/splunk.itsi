@@ -1,0 +1,199 @@
+---
+- name: START itsi_episode_details integration tests
+  ansible.builtin.debug:
+    msg: "START itsi_episode_details integration tests on connection={{ ansible_connection }}"
+
+# Setup -- verify the pre-existing test episode is reachable
+- name: Verify test episode exists
+  splunk.itsi.itsi_episode_details_info:
+    episode_id: "{{ test_episode_id }}"
+  register: verify_episode
+
+- name: Assert test episode was found
+  ansible.builtin.assert:
+    that:
+      - verify_episode.episodes | length == 1
+      - verify_episode.episodes[0]._key == test_episode_id
+    fail_msg: >-
+      Pre-existing episode with _key "{{ test_episode_id }}" not found.
+      Integration tests require this episode to exist before running.
+
+# Reset episode to a known baseline before any update tests
+- name: Reset episode to baseline before tests
+  ansible.builtin.include_tasks: _restore_episode.yaml
+
+- block:
+    # Info module tests
+    - name: Get episode by ID
+      splunk.itsi.itsi_episode_details_info:
+        episode_id: "{{ test_episode_id }}"
+      register: info_by_id
+
+    - name: Assert episode fetched by ID is correct
+      ansible.builtin.assert:
+        that:
+          - info_by_id.changed == false
+          - info_by_id.episodes | length == 1
+          - info_by_id.episodes[0]._key == test_episode_id
+
+    - name: List episodes with limit
+      splunk.itsi.itsi_episode_details_info:
+        limit: 5
+      register: info_list
+
+    - name: Assert episode list is returned
+      ansible.builtin.assert:
+        that:
+          - info_list.changed == false
+          - info_list.episodes is defined
+          - info_list.episodes | length > 0
+          - info_list.episodes | length <= 5
+
+    - name: Count episodes
+      splunk.itsi.itsi_episode_details_info:
+        count_only: true
+      register: info_count
+
+    - name: Assert count is at least 1
+      ansible.builtin.assert:
+        that:
+          - info_count.changed == false
+          - info_count.count >= 1
+
+    # Update + check mode + idempotency
+    # Check mode
+    - name: Check mode - Update episode (dry run)
+      splunk.itsi.itsi_update_episode_details:
+        episode_id: "{{ test_episode_id }}"
+        severity: "{{ test_episode_update.severity }}"
+        status: "{{ test_episode_update.status }}"
+        owner: "{{ test_episode_update.owner }}"
+        instruction: "{{ test_episode_update.instruction }}"
+      check_mode: true
+      register: check_mode_update_result
+
+    - name: Assert check mode returns changed=true
+      ansible.builtin.assert:
+        that:
+          - check_mode_update_result.changed == true
+          - check_mode_update_result.episode_id == test_episode_id
+          - check_mode_update_result.before is defined
+          - check_mode_update_result.after is defined
+
+    # Verify check mode did NOT apply changes
+    - name: Verify episode unchanged after check mode
+      splunk.itsi.itsi_episode_details_info:
+        episode_id: "{{ test_episode_id }}"
+      register: info_after_check_mode
+
+    - name: Assert values did NOT change during check mode
+      ansible.builtin.assert:
+        that:
+          - info_after_check_mode.episodes[0].severity != test_episode_update.severity
+            or info_after_check_mode.episodes[0].instruction != test_episode_update.instruction
+        fail_msg: "Check mode should NOT have applied changes to the episode"
+
+    # Actual update (same params as check mode above)
+    - name: Update episode
+      splunk.itsi.itsi_update_episode_details:
+        episode_id: "{{ test_episode_id }}"
+        severity: "{{ test_episode_update.severity }}"
+        status: "{{ test_episode_update.status }}"
+        owner: "{{ test_episode_update.owner }}"
+        instruction: "{{ test_episode_update.instruction }}"
+      register: update_result
+
+    - name: Assert update returned changed=true
+      ansible.builtin.assert:
+        that:
+          - update_result.changed == true
+          - update_result.episode_id == test_episode_id
+
+    # Verify update was applied
+    - name: Verify episode was updated
+      splunk.itsi.itsi_episode_details_info:
+        episode_id: "{{ test_episode_id }}"
+      register: info_after_update
+
+    - name: Assert updated values match desired state
+      ansible.builtin.assert:
+        that:
+          - info_after_update.episodes[0].severity == test_episode_update.severity
+          - info_after_update.episodes[0].status == test_episode_update.status
+          - info_after_update.episodes[0].owner == test_episode_update.owner
+          - info_after_update.episodes[0].instruction == test_episode_update.instruction
+
+    # Idempotency - same update again should be changed=false
+    - name: Update episode again (idempotency)
+      splunk.itsi.itsi_update_episode_details:
+        episode_id: "{{ test_episode_id }}"
+        severity: "{{ test_episode_update.severity }}"
+        status: "{{ test_episode_update.status }}"
+        owner: "{{ test_episode_update.owner }}"
+        instruction: "{{ test_episode_update.instruction }}"
+      register: idempotent_result
+
+    - name: Assert idempotency returns changed=false
+      ansible.builtin.assert:
+        that:
+          - idempotent_result.changed == false
+          - idempotent_result.diff == {}
+
+    # Check mode after idempotency - already at desired state
+    - name: Check mode after idempotency (expect no changes)
+      splunk.itsi.itsi_update_episode_details:
+        episode_id: "{{ test_episode_id }}"
+        severity: "{{ test_episode_update.severity }}"
+        status: "{{ test_episode_update.status }}"
+        owner: "{{ test_episode_update.owner }}"
+        instruction: "{{ test_episode_update.instruction }}"
+      check_mode: true
+      register: check_mode_after_idempotent
+
+    - name: Assert check mode returns changed=false when state matches
+      ansible.builtin.assert:
+        that:
+          - check_mode_after_idempotent.changed == false
+          - check_mode_after_idempotent.diff == {}
+
+    # Second update round - proves updates detect real changes
+    - name: Update episode to different values
+      splunk.itsi.itsi_update_episode_details:
+        episode_id: "{{ test_episode_id }}"
+        severity: "{{ test_episode_update_changed.severity }}"
+        status: "{{ test_episode_update_changed.status }}"
+        owner: "{{ test_episode_update_changed.owner }}"
+        instruction: "{{ test_episode_update_changed.instruction }}"
+      register: update_changed_result
+
+    - name: Assert second update returned changed=true with correct diff
+      ansible.builtin.assert:
+        that:
+          - update_changed_result.changed == true
+          - update_changed_result.before.severity == test_episode_update.severity
+          - update_changed_result.after.severity == test_episode_update_changed.severity
+          - update_changed_result.after.instruction == test_episode_update_changed.instruction
+
+    # Idempotency of second update
+    - name: Update episode to different values again (idempotency)
+      splunk.itsi.itsi_update_episode_details:
+        episode_id: "{{ test_episode_id }}"
+        severity: "{{ test_episode_update_changed.severity }}"
+        status: "{{ test_episode_update_changed.status }}"
+        owner: "{{ test_episode_update_changed.owner }}"
+        instruction: "{{ test_episode_update_changed.instruction }}"
+      register: update_changed_idempotent
+
+    - name: Assert second update idempotency returns changed=false
+      ansible.builtin.assert:
+        that:
+          - update_changed_idempotent.changed == false
+          - update_changed_idempotent.diff == {}
+
+    - name: COMPLETED - All itsi_episode_details integration tests passed
+      ansible.builtin.debug:
+        msg: "All itsi_episode_details integration tests completed successfully!"
+
+  always:
+    - name: Restore episode to original state
+      ansible.builtin.include_tasks: _restore_episode.yaml

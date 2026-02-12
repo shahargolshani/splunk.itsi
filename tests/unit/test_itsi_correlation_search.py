@@ -8,22 +8,6 @@ import json
 from unittest.mock import MagicMock, patch
 
 import pytest
-
-
-# Exception classes to simulate Ansible module exit behavior
-# Inherit from SystemExit so they're not caught by "except Exception"
-class AnsibleExitJson(SystemExit):
-    """Exception raised when module.exit_json() is called."""
-
-    pass
-
-
-class AnsibleFailJson(SystemExit):
-    """Exception raised when module.fail_json() is called."""
-
-    pass
-
-
 from ansible_collections.splunk.itsi.plugins.module_utils.correlation_search_utils import (
     _flatten_search_entry,
     flatten_search_object,
@@ -42,6 +26,7 @@ from ansible_collections.splunk.itsi.plugins.modules.itsi_correlation_search imp
     main,
     update_correlation_search,
 )
+from conftest import AnsibleExitJson, AnsibleFailJson, make_mock_conn
 
 # Sample response payloads for testing
 SAMPLE_ENTRY = {
@@ -332,12 +317,7 @@ class TestGetCorrelationSearch:
 
     def test_get_by_id_success(self):
         """Test getting correlation search by ID."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": json.dumps(SAMPLE_API_RESPONSE),
-            "headers": {},
-        }
+        mock_conn = make_mock_conn(200, json.dumps(SAMPLE_API_RESPONSE))
 
         status, headers, body = get_correlation_search(
             ItsiRequest(mock_conn, _mock_module()),
@@ -349,12 +329,7 @@ class TestGetCorrelationSearch:
 
     def test_get_with_name_encoding(self):
         """Test getting with name encoding (%20 for spaces)."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": json.dumps(SAMPLE_API_RESPONSE),
-            "headers": {},
-        }
+        mock_conn = make_mock_conn(200, json.dumps(SAMPLE_API_RESPONSE))
 
         get_correlation_search(
             ItsiRequest(mock_conn, _mock_module()),
@@ -368,12 +343,7 @@ class TestGetCorrelationSearch:
 
     def test_get_without_name_encoding(self):
         """Test getting without name encoding (+ for spaces)."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": json.dumps(SAMPLE_API_RESPONSE),
-            "headers": {},
-        }
+        mock_conn = make_mock_conn(200, json.dumps(SAMPLE_API_RESPONSE))
 
         get_correlation_search(
             ItsiRequest(mock_conn, _mock_module()),
@@ -387,12 +357,7 @@ class TestGetCorrelationSearch:
 
     def test_get_with_fields(self):
         """Test getting with specific fields."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": json.dumps(SAMPLE_API_RESPONSE),
-            "headers": {},
-        }
+        mock_conn = make_mock_conn(200, json.dumps(SAMPLE_API_RESPONSE))
 
         get_correlation_search(
             ItsiRequest(mock_conn, _mock_module()),
@@ -405,12 +370,7 @@ class TestGetCorrelationSearch:
 
     def test_get_with_fields_list(self):
         """Test getting with fields as list."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": json.dumps(SAMPLE_API_RESPONSE),
-            "headers": {},
-        }
+        mock_conn = make_mock_conn(200, json.dumps(SAMPLE_API_RESPONSE))
 
         get_correlation_search(
             ItsiRequest(mock_conn, _mock_module()),
@@ -423,12 +383,7 @@ class TestGetCorrelationSearch:
 
     def test_get_not_found(self):
         """Test getting non-existent search."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 404,
-            "body": json.dumps({"error": "Not found"}),
-            "headers": {},
-        }
+        mock_conn = make_mock_conn(404, json.dumps({"error": "Not found"}))
 
         result = get_correlation_search(ItsiRequest(mock_conn, _mock_module()), "nonexistent")
 
@@ -440,12 +395,7 @@ class TestCreateCorrelationSearch:
 
     def test_create_basic(self):
         """Test basic creation."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": json.dumps(SAMPLE_API_RESPONSE),
-            "headers": {},
-        }
+        mock_conn = make_mock_conn(200, json.dumps(SAMPLE_API_RESPONSE))
 
         search_data = {
             "name": "New Search",
@@ -462,12 +412,7 @@ class TestCreateCorrelationSearch:
 
     def test_create_with_dispatch_time_fields(self):
         """Test creation with dispatch time fields."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": "{}",
-            "headers": {},
-        }
+        mock_conn = make_mock_conn(200, "{}")
 
         search_data = {
             "name": "New Search",
@@ -485,12 +430,7 @@ class TestCreateCorrelationSearch:
 
     def test_create_with_simple_time_fields(self):
         """Test creation with simple time fields."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": "{}",
-            "headers": {},
-        }
+        mock_conn = make_mock_conn(200, "{}")
 
         search_data = {
             "name": "New Search",
@@ -512,12 +452,7 @@ class TestUpdateCorrelationSearch:
 
     def test_update_basic(self):
         """Test basic update."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": json.dumps(SAMPLE_API_RESPONSE),
-            "headers": {},
-        }
+        mock_conn = make_mock_conn(200, json.dumps(SAMPLE_API_RESPONSE))
 
         update_data = {"disabled": "1"}
         status, headers, body = update_correlation_search(
@@ -532,12 +467,7 @@ class TestUpdateCorrelationSearch:
 
     def test_update_includes_name_in_payload(self):
         """Test that update includes name in payload."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": "{}",
-            "headers": {},
-        }
+        mock_conn = make_mock_conn(200, "{}")
 
         update_correlation_search(
             ItsiRequest(mock_conn, _mock_module()),
@@ -551,12 +481,7 @@ class TestUpdateCorrelationSearch:
 
     def test_update_with_dispatch_time_fields(self):
         """Test update with dispatch time fields."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": "{}",
-            "headers": {},
-        }
+        mock_conn = make_mock_conn(200, "{}")
 
         update_data = {
             "dispatch.earliest_time": "-30m",
@@ -597,12 +522,7 @@ class TestDeleteCorrelationSearch:
 
     def test_delete_basic(self):
         """Test basic deletion."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 204,
-            "body": "",
-            "headers": {},
-        }
+        mock_conn = make_mock_conn(204, "")
 
         status, headers, body = delete_correlation_search(
             ItsiRequest(mock_conn, _mock_module()),
@@ -615,12 +535,7 @@ class TestDeleteCorrelationSearch:
 
     def test_delete_with_name_encoding(self):
         """Test deletion with name encoding."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 204,
-            "body": "",
-            "headers": {},
-        }
+        mock_conn = make_mock_conn(204, "")
 
         delete_correlation_search(
             ItsiRequest(mock_conn, _mock_module()),
@@ -633,12 +548,7 @@ class TestDeleteCorrelationSearch:
 
     def test_delete_without_name_encoding(self):
         """Test deletion without name encoding."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 204,
-            "body": "",
-            "headers": {},
-        }
+        mock_conn = make_mock_conn(204, "")
 
         delete_correlation_search(
             ItsiRequest(mock_conn, _mock_module()),
@@ -695,13 +605,8 @@ class TestEnsurePresent:
         assert result["changed"] is True
 
     def test_ensure_present_no_change_needed(self):
-        """Test _handle_state_present when no change is needed."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": json.dumps(SAMPLE_API_RESPONSE),
-            "headers": {},
-        }
+        """Test ensure_present when no change is needed."""
+        mock_conn = make_mock_conn(200, json.dumps(SAMPLE_API_RESPONSE))
 
         mock_module = _mock_module()
         mock_module.check_mode = False
@@ -791,13 +696,8 @@ class TestEnsurePresent:
         assert payload.get("is_scheduled") == "1"
 
     def test_ensure_present_error_response(self):
-        """Test _handle_state_present with error response (500 triggers fail_json)."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 500,
-            "body": json.dumps({"error": "Server error"}),
-            "headers": {},
-        }
+        """Test ensure_present with error response."""
+        mock_conn = make_mock_conn(500, json.dumps({"error": "Server error"}))
 
         mock_module = _mock_module()
         mock_module.check_mode = False
@@ -887,12 +787,7 @@ class TestMain:
         mock_module.exit_json.side_effect = AnsibleExitJson
         mock_module_class.return_value = mock_module
 
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 404,
-            "body": "{}",
-            "headers": {},
-        }
+        mock_conn = make_mock_conn(404, "{}")
         mock_connection.return_value = mock_conn
 
         with pytest.raises(AnsibleFailJson):
@@ -925,12 +820,7 @@ class TestMain:
         mock_module.exit_json.side_effect = AnsibleExitJson
         mock_module_class.return_value = mock_module
 
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 404,
-            "body": "{}",
-            "headers": {},
-        }
+        mock_conn = make_mock_conn(404, "{}")
         mock_connection.return_value = mock_conn
 
         with pytest.raises(AnsibleExitJson):
@@ -965,12 +855,7 @@ class TestMain:
         mock_module.exit_json.side_effect = AnsibleExitJson
         mock_module_class.return_value = mock_module
 
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": json.dumps(SAMPLE_API_RESPONSE),
-            "headers": {},
-        }
+        mock_conn = make_mock_conn(200, json.dumps(SAMPLE_API_RESPONSE))
         mock_connection.return_value = mock_conn
 
         with pytest.raises(AnsibleExitJson):
@@ -1072,12 +957,7 @@ class TestMain:
         mock_module.exit_json.side_effect = AnsibleExitJson
         mock_module_class.return_value = mock_module
 
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 404,
-            "body": "{}",
-            "headers": {},
-        }
+        mock_conn = make_mock_conn(404, "{}")
         mock_connection.return_value = mock_conn
 
         with pytest.raises(AnsibleExitJson):
@@ -1111,12 +991,7 @@ class TestMain:
         mock_module.exit_json.side_effect = AnsibleExitJson
         mock_module_class.return_value = mock_module
 
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": json.dumps(SAMPLE_API_RESPONSE),
-            "headers": {},
-        }
+        mock_conn = make_mock_conn(200, json.dumps(SAMPLE_API_RESPONSE))
         mock_connection.return_value = mock_conn
 
         with pytest.raises(AnsibleExitJson):
@@ -1179,12 +1054,7 @@ class TestMain:
         mock_module.exit_json.side_effect = AnsibleExitJson
         mock_module_class.return_value = mock_module
 
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 404,
-            "body": "{}",
-            "headers": {},
-        }
+        mock_conn = make_mock_conn(404, "{}")
         mock_connection.return_value = mock_conn
 
         with pytest.raises(AnsibleExitJson):
@@ -1220,12 +1090,7 @@ class TestMain:
         mock_module.exit_json.side_effect = AnsibleExitJson
         mock_module_class.return_value = mock_module
 
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 404,
-            "body": "{}",
-            "headers": {},
-        }
+        mock_conn = make_mock_conn(404, "{}")
         mock_connection.return_value = mock_conn
 
         with pytest.raises(AnsibleExitJson):
@@ -1259,12 +1124,7 @@ class TestMain:
         mock_module.exit_json.side_effect = AnsibleExitJson
         mock_module_class.return_value = mock_module
 
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 404,
-            "body": "{}",
-            "headers": {},
-        }
+        mock_conn = make_mock_conn(404, "{}")
         mock_connection.return_value = mock_conn
 
         with pytest.raises(AnsibleExitJson):
@@ -1298,12 +1158,7 @@ class TestMain:
         mock_module.exit_json.side_effect = AnsibleExitJson
         mock_module_class.return_value = mock_module
 
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 404,
-            "body": "{}",
-            "headers": {},
-        }
+        mock_conn = make_mock_conn(404, "{}")
         mock_connection.return_value = mock_conn
 
         with pytest.raises(AnsibleExitJson):

@@ -1,0 +1,24 @@
+---
+# Pre-existing episode _key (from the ITSI KV store)
+test_episode_id: "84cb0211-6235-4058-acfc-80780649c6b8"
+
+# First update payload -- applied during check-mode, update, and idempotency tests
+test_episode_update:
+  severity: "4"
+  status: "2"
+  owner: "unassigned"
+  instruction: "Testing the itsi_update_episode_details module"
+
+# Second update payload -- proves the module detects real changes
+test_episode_update_changed:
+  severity: "5"
+  status: "3"
+  owner: "unassigned"
+  instruction: "Updated by Ansible integration test"
+
+# Baseline values used to restore the episode after the test run
+test_episode_restore:
+  severity: "2"
+  status: "1"
+  owner: "unassigned"
+  instruction: "all_instruction"

@@ -1,0 +1,13 @@
+---
+# Restore the test episode to its baseline state after tests.
+# Called in the always: block so the episode is cleaned up regardless of outcome.
+
+- name: Restore episode to baseline state
+  splunk.itsi.itsi_update_episode_details:
+    episode_id: "{{ test_episode_id }}"
+    severity: "{{ test_episode_restore.severity }}"
+    status: "{{ test_episode_restore.status }}"
+    owner: "{{ test_episode_restore.owner }}"
+    instruction: "{{ test_episode_restore.instruction }}"
+  ignore_errors: true
+  when: test_episode_id is defined

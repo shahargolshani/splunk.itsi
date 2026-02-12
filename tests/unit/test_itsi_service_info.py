@@ -9,26 +9,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-
-# Exception classes to simulate Ansible module exit behavior
-# Inherit from SystemExit so they're not caught by "except Exception"
-class AnsibleExitJson(SystemExit):
-    """Exception raised when module.exit_json() is called."""
-
-    pass
-
-
-class AnsibleFailJson(SystemExit):
-    """Exception raised when module.fail_json() is called."""
-
-    pass
-
-
 # Import module functions for testing
 from ansible_collections.splunk.itsi.plugins.modules.itsi_service_info import (
     _build_filter,
     main,
 )
+from conftest import AnsibleExitJson, AnsibleFailJson, make_mock_conn
 
 # Sample test data
 SAMPLE_SERVICE = {
@@ -184,11 +170,7 @@ class TestMain:
         mock_module.exit_json.side_effect = AnsibleExitJson
         mock_module_class.return_value = mock_module
 
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": json.dumps(SAMPLE_SERVICE),
-        }
+        mock_conn = make_mock_conn(200, json.dumps(SAMPLE_SERVICE))
         mock_connection.return_value = mock_conn
 
         with pytest.raises(AnsibleExitJson):
@@ -222,11 +204,7 @@ class TestMain:
         mock_module.exit_json.side_effect = AnsibleExitJson
         mock_module_class.return_value = mock_module
 
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 404,
-            "body": json.dumps({"message": "Not found"}),
-        }
+        mock_conn = make_mock_conn(404, json.dumps({"message": "Not found"}))
         mock_connection.return_value = mock_conn
 
         with pytest.raises(AnsibleExitJson):
@@ -257,11 +235,7 @@ class TestMain:
         mock_module.exit_json.side_effect = AnsibleExitJson
         mock_module_class.return_value = mock_module
 
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": json.dumps(SAMPLE_SERVICE_LIST),
-        }
+        mock_conn = make_mock_conn(200, json.dumps(SAMPLE_SERVICE_LIST))
         mock_connection.return_value = mock_conn
 
         with pytest.raises(AnsibleExitJson):
@@ -290,11 +264,7 @@ class TestMain:
         mock_module.exit_json.side_effect = AnsibleExitJson
         mock_module_class.return_value = mock_module
 
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": json.dumps([SAMPLE_SERVICE]),
-        }
+        mock_conn = make_mock_conn(200, json.dumps([SAMPLE_SERVICE]))
         mock_connection.return_value = mock_conn
 
         with pytest.raises(AnsibleExitJson):
@@ -325,11 +295,7 @@ class TestMain:
         mock_module.exit_json.side_effect = AnsibleExitJson
         mock_module_class.return_value = mock_module
 
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": json.dumps([SAMPLE_SERVICE]),
-        }
+        mock_conn = make_mock_conn(200, json.dumps([SAMPLE_SERVICE]))
         mock_connection.return_value = mock_conn
 
         with pytest.raises(AnsibleExitJson):
@@ -358,11 +324,7 @@ class TestMain:
         mock_module.exit_json.side_effect = AnsibleExitJson
         mock_module_class.return_value = mock_module
 
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": json.dumps([SAMPLE_SERVICE]),
-        }
+        mock_conn = make_mock_conn(200, json.dumps([SAMPLE_SERVICE]))
         mock_connection.return_value = mock_conn
 
         with pytest.raises(AnsibleExitJson):
@@ -391,11 +353,7 @@ class TestMain:
         mock_module.exit_json.side_effect = AnsibleExitJson
         mock_module_class.return_value = mock_module
 
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": json.dumps([]),
-        }
+        mock_conn = make_mock_conn(200, json.dumps([]))
         mock_connection.return_value = mock_conn
 
         with pytest.raises(AnsibleExitJson):
@@ -424,11 +382,7 @@ class TestMain:
         mock_module.exit_json.side_effect = AnsibleExitJson
         mock_module_class.return_value = mock_module
 
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": json.dumps([{"_key": "test", "title": "svc", "enabled": 1}]),
-        }
+        mock_conn = make_mock_conn(200, json.dumps([{"_key": "test", "title": "svc", "enabled": 1}]))
         mock_connection.return_value = mock_conn
 
         with pytest.raises(AnsibleExitJson):
@@ -457,11 +411,7 @@ class TestMain:
         mock_module.exit_json.side_effect = AnsibleExitJson
         mock_module_class.return_value = mock_module
 
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": json.dumps(SAMPLE_SERVICE_LIST),
-        }
+        mock_conn = make_mock_conn(200, json.dumps(SAMPLE_SERVICE_LIST))
         mock_connection.return_value = mock_conn
 
         with pytest.raises(AnsibleExitJson):
@@ -490,11 +440,7 @@ class TestMain:
         mock_module.exit_json.side_effect = AnsibleExitJson
         mock_module_class.return_value = mock_module
 
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": json.dumps([]),
-        }
+        mock_conn = make_mock_conn(200, json.dumps([]))
         mock_connection.return_value = mock_conn
 
         with pytest.raises(AnsibleExitJson):
@@ -523,11 +469,7 @@ class TestMain:
         mock_module.exit_json.side_effect = AnsibleExitJson
         mock_module_class.return_value = mock_module
 
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": json.dumps(SAMPLE_SERVICE_LIST),
-        }
+        mock_conn = make_mock_conn(200, json.dumps(SAMPLE_SERVICE_LIST))
         mock_connection.return_value = mock_conn
 
         with pytest.raises(AnsibleExitJson):
@@ -560,11 +502,7 @@ class TestMain:
         mock_module.exit_json.side_effect = AnsibleExitJson
         mock_module_class.return_value = mock_module
 
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 500,
-            "body": json.dumps({"message": "Internal server error"}),
-        }
+        mock_conn = make_mock_conn(500, json.dumps({"message": "Internal server error"}))
         mock_connection.return_value = mock_conn
 
         with pytest.raises(AnsibleFailJson):
@@ -593,16 +531,10 @@ class TestMain:
         mock_module.exit_json.side_effect = AnsibleExitJson
         mock_module_class.return_value = mock_module
 
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": json.dumps(
-                {
-                    "items": SAMPLE_SERVICE_LIST,
-                    "size": 2,
-                },
-            ),
-        }
+        mock_conn = make_mock_conn(
+            200,
+            json.dumps({"items": SAMPLE_SERVICE_LIST, "size": 2}),
+        )
         mock_connection.return_value = mock_conn
 
         with pytest.raises(AnsibleExitJson):
@@ -635,16 +567,10 @@ class TestMain:
         mock_module.exit_json.side_effect = AnsibleExitJson
         mock_module_class.return_value = mock_module
 
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 400,
-            "body": json.dumps(
-                {
-                    "error": "Bad Request",
-                    "context": "Invalid key format",
-                },
-            ),
-        }
+        mock_conn = make_mock_conn(
+            400,
+            json.dumps({"error": "Bad Request", "context": "Invalid key format"}),
+        )
         mock_connection.return_value = mock_conn
 
         with pytest.raises(AnsibleFailJson):
@@ -673,11 +599,7 @@ class TestMain:
         mock_module.exit_json.side_effect = AnsibleExitJson
         mock_module_class.return_value = mock_module
 
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": json.dumps([SAMPLE_SERVICE]),
-        }
+        mock_conn = make_mock_conn(200, json.dumps([SAMPLE_SERVICE]))
         mock_connection.return_value = mock_conn
 
         with pytest.raises(AnsibleExitJson):
@@ -710,11 +632,7 @@ class TestMain:
         mock_module.exit_json.side_effect = AnsibleExitJson
         mock_module_class.return_value = mock_module
 
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": json.dumps([]),
-        }
+        mock_conn = make_mock_conn(200, json.dumps([]))
         mock_connection.return_value = mock_conn
 
         with pytest.raises(AnsibleExitJson):
@@ -747,11 +665,7 @@ class TestMain:
         mock_module.exit_json.side_effect = AnsibleExitJson
         mock_module_class.return_value = mock_module
 
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": json.dumps(SAMPLE_SERVICE_LIST),
-        }
+        mock_conn = make_mock_conn(200, json.dumps(SAMPLE_SERVICE_LIST))
         mock_connection.return_value = mock_conn
 
         with pytest.raises(AnsibleExitJson):
@@ -780,12 +694,7 @@ class TestMain:
         mock_module.exit_json.side_effect = AnsibleExitJson
         mock_module_class.return_value = mock_module
 
-        mock_conn = MagicMock()
-        # Return a dict without items/size (unknown shape)
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": json.dumps({"unexpected": "shape"}),
-        }
+        mock_conn = make_mock_conn(200, json.dumps({"unexpected": "shape"}))
         mock_connection.return_value = mock_conn
 
         with pytest.raises(AnsibleExitJson):
@@ -815,16 +724,10 @@ class TestMain:
         mock_module.exit_json.side_effect = AnsibleExitJson
         mock_module_class.return_value = mock_module
 
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 403,
-            "body": json.dumps(
-                {
-                    "message": "Forbidden",
-                    "details": "Insufficient permissions",
-                },
-            ),
-        }
+        mock_conn = make_mock_conn(
+            403,
+            json.dumps({"message": "Forbidden", "details": "Insufficient permissions"}),
+        )
         mock_connection.return_value = mock_conn
 
         with pytest.raises(AnsibleFailJson):
@@ -853,11 +756,7 @@ class TestMain:
         mock_module.exit_json.side_effect = AnsibleExitJson
         mock_module_class.return_value = mock_module
 
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 500,
-            "body": json.dumps({"error": "Server error"}),
-        }
+        mock_conn = make_mock_conn(500, json.dumps({"error": "Server error"}))
         mock_connection.return_value = mock_conn
 
         with pytest.raises(AnsibleFailJson):

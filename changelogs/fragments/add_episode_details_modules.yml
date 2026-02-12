@@ -1,0 +1,4 @@
+---
+minor_changes:
+  - Add new module ``itsi_update_episode_details`` for updating specific fields of ITSI episodes (severity, status, owner, instruction).
+  - Add new module ``itsi_episode_details_info`` for querying ITSI episodes by ID, listing with filters, or retrieving a count.

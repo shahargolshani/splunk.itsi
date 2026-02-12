@@ -8,33 +8,23 @@ from unittest.mock import MagicMock
 
 import pytest
 from ansible_collections.splunk.itsi.plugins.module_utils.itsi_request import ItsiRequest
+from conftest import make_mock_conn
+
 
 # ---------------------------------------------------------------------------
-# Helpers
+# Test helpers
 # ---------------------------------------------------------------------------
-
-
-def _mock_module() -> MagicMock:
-    """Create a MagicMock AnsibleModule."""
+def _mock_module():
+    """Create a MagicMock AnsibleModule for ItsiRequest."""
     module = MagicMock()
     module.fail_json.side_effect = SystemExit(1)
     return module
 
 
-def _mock_conn(status: int = 200, body: str = "{}", headers: dict | None = None) -> MagicMock:
-    """Create a MagicMock Connection with a preconfigured send_request return value."""
-    conn = MagicMock()
-    conn.send_request.return_value = {
-        "status": status,
-        "body": body,
-        "headers": headers or {},
-    }
-    return conn
-
-
 def _client(status=200, body="{}", headers=None):
-    """Shorthand: build an ItsiRequest with mocked connection and module."""
-    return ItsiRequest(_mock_conn(status, body, headers), _mock_module())
+    """Create an ItsiRequest backed by a canned mock connection."""
+    conn = make_mock_conn(status, body, headers)
+    return ItsiRequest(conn, _mock_module())
 
 
 # ===========================================================================
@@ -62,21 +52,28 @@ class TestRequest:
     """Tests for the generic request() entry-point."""
 
     def test_success_json_dict(self):
+        """Test successful request with JSON dict response."""
         client = _client(body=json.dumps({"_key": "abc"}))
+
         result = client.request("GET", "/test/path")
         assert result is not None
-        status, headers, body = result
+        status, _headers, body = result
+
         assert status == 200
         assert body["_key"] == "abc"
 
     def test_method_uppercased(self):
+        """Test that the HTTP method is converted to uppercase."""
         client = _client()
+
         client.request("get", "/test")
         call_kw = client.connection.send_request.call_args[1]
         assert call_kw["method"] == "GET"
 
     def test_passes_body_and_headers(self):
+        """Test that body and headers are forwarded to send_request."""
         client = _client()
+
         client.request("POST", "/api", payload={"k": "v"})
         call_kw = client.connection.send_request.call_args[1]
         assert json.loads(call_kw["body"]) == {"k": "v"}
@@ -129,15 +126,20 @@ class TestRequest:
 
 class TestGet:
     def test_delegates_to_request(self):
+        """Test get delegates to request with GET method."""
         client = _client(body=json.dumps({"ok": True}))
+
         result = client.get("/items")
         assert result is not None
-        status, headers, body = result
+        status, _headers, data = result
+
         assert status == 200
         assert client.connection.send_request.call_args[1]["method"] == "GET"
 
     def test_with_params(self):
+        """Test GET with query parameters."""
         client = _client()
+
         client.get("/items", params={"output_mode": "json", "count": 10})
         path = client.connection.send_request.call_args[0][0]
         assert "output_mode=json" in path
@@ -146,14 +148,18 @@ class TestGet:
 
 class TestPost:
     def test_delegates_to_request(self):
+        """Test post delegates to request with POST method."""
         client = _client()
+
         client.post("/items", payload={"title": "svc"})
         call_kw = client.connection.send_request.call_args[1]
         assert call_kw["method"] == "POST"
         assert json.loads(call_kw["body"]) == {"title": "svc"}
 
     def test_with_form_data(self):
+        """Test POST with form data encoding."""
         client = _client()
+
         client.post("/items", payload={"key": "value"}, use_form_data=True)
         call_kw = client.connection.send_request.call_args[1]
         assert "key=value" in call_kw["body"]
@@ -162,10 +168,13 @@ class TestPost:
 
 class TestDelete:
     def test_delegates_to_request(self):
+        """Test delete delegates to request with DELETE method."""
         client = _client(status=204, body="")
+
         result = client.delete("/items/abc")
         assert result is not None
-        status, headers, body = result
+        status, _headers, data = result
+
         assert status == 204
         assert client.connection.send_request.call_args[1]["method"] == "DELETE"
 
@@ -177,20 +186,27 @@ class TestDelete:
 
 class TestGetByPath:
     def test_adds_output_mode_json(self):
+        """Test that output_mode=json is automatically added."""
         client = _client()
-        client.get_by_path("/endpoint")
+
+        client.get_by_path("/servicesNS/nobody/SA-ITOA/itoa_interface/service")
+
         path = client.connection.send_request.call_args[0][0]
         assert "output_mode=json" in path
 
     def test_merges_extra_params(self):
+        """Test that extra query_params are merged."""
         client = _client()
+
         client.get_by_path("/endpoint", query_params={"fields": "_key,title"})
         path = client.connection.send_request.call_args[0][0]
         assert "output_mode=json" in path
         assert "fields=_key" in path
 
     def test_omits_none_params(self):
+        """Test that None query_params values are omitted."""
         client = _client()
+
         client.get_by_path("/endpoint", query_params={"keep": "yes", "skip": None})
         path = client.connection.send_request.call_args[0][0]
         assert "keep=yes" in path
@@ -199,7 +215,9 @@ class TestGetByPath:
 
 class TestDeleteByPath:
     def test_adds_output_mode_json(self):
-        client = _client(body="{}")
+        """Test that output_mode=json is automatically added."""
+        client = _client(status=200, body="{}")
+
         client.delete_by_path("/endpoint/abc")
         path = client.connection.send_request.call_args[0][0]
         assert "output_mode=json" in path
@@ -207,7 +225,9 @@ class TestDeleteByPath:
 
 class TestCreateUpdate:
     def test_posts_with_output_mode_json(self):
+        """Test that output_mode=json is added and POST is used."""
         client = _client()
+
         client.create_update("/endpoint", data={"title": "new"})
         path = client.connection.send_request.call_args[0][0]
         call_kw = client.connection.send_request.call_args[1]
@@ -216,13 +236,17 @@ class TestCreateUpdate:
         assert json.loads(call_kw["body"]) == {"title": "new"}
 
     def test_with_form_data(self):
+        """Test create_update with form-data encoding."""
         client = _client()
+
         client.create_update("/endpoint", data={"k": "v"}, use_form_data=True)
         call_kw = client.connection.send_request.call_args[1]
         assert "k=v" in call_kw["body"]
 
     def test_merges_extra_params(self):
+        """Test that extra query_params are merged."""
         client = _client()
+
         client.create_update("/endpoint", data=None, query_params={"is_partial_data": "1"})
         path = client.connection.send_request.call_args[0][0]
         assert "is_partial_data=1" in path
@@ -347,30 +371,63 @@ class TestEndToEnd:
     def test_get_json_round_trip(self):
         payload = {"_key": "p1", "title": "My Policy"}
         client = _client(body=json.dumps(payload))
+
         result = client.get("/itoa_interface/notable_event_aggregation_policy/p1")
         assert result is not None
-        _status, _headers, body = result
-        assert body["title"] == "My Policy"
+        status, _headers, data = result
+
+        assert status == 200
+        assert data["title"] == "My Policy"
 
     def test_post_create_round_trip(self):
+        """Test full POST create round trip."""
         client = _client(body=json.dumps({"_key": "new123"}))
-        result = client.create_update("/endpoint", data={"title": "New"})
+
+        result = client.create_update(
+            "/itoa_interface/notable_event_aggregation_policy",
+            data={"title": "New Policy"},
+        )
         assert result is not None
-        _status, _headers, body = result
-        assert body["_key"] == "new123"
+        status, _headers, data = result
+
+        assert status == 200
+        assert data["_key"] == "new123"
+        path = client.connection.send_request.call_args[0][0]
+        assert "output_mode=json" in path
 
     def test_delete_round_trip(self):
-        client = _client(body='{"deleted": true}')
-        result = client.delete_by_path("/endpoint/svc123")
+        """Test full DELETE round trip."""
+        client = _client(status=200, body='{"deleted": true}')
+
+        result = client.delete_by_path("/itoa_interface/service/svc123")
         assert result is not None
-        assert result[0] == 200
+        status, _headers, data = result
 
-    def test_404_returns_none(self):
-        client = _client(status=404, body='{"error": "not found"}')
-        assert client.get("/anything") is None
+        assert status == 200
+        path = client.connection.send_request.call_args[0][0]
+        assert "output_mode=json" in path
 
-    def test_500_calls_fail_json(self):
-        client = _client(status=500, body="error")
+    def test_connection_exception_handled(self):
+        """Test that connection exceptions are caught and fail_json called."""
+        conn = MagicMock()
+        conn.send_request.side_effect = Exception("Network error")
+        module = _mock_module()
+        client = ItsiRequest(conn, module)
+
         with pytest.raises(SystemExit):
             client.get("/anything")
-        client.module.fail_json.assert_called_once()
+
+        module.fail_json.assert_called_once()
+        assert "Network error" in module.fail_json.call_args[1]["msg"]
+
+    def test_auth_exception_handled(self):
+        """Test that 401 exceptions are caught and fail_json called."""
+        conn = MagicMock()
+        conn.send_request.side_effect = Exception("401 Unauthorized")
+        module = _mock_module()
+        client = ItsiRequest(conn, module)
+
+        with pytest.raises(SystemExit):
+            client.get("/anything")
+
+        module.fail_json.assert_called_once()

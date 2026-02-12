@@ -14,3 +14,5 @@ homepage: https://github.com/ansible-collections/splunk.itsi
 issues: https://github.com/ansible-collections/splunk.itsi/issues
 readme: README.md
 version: "1.0.0"
+dependencies:
+  ansible.netcommon: ">=6.0.0"

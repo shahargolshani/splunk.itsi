@@ -8,21 +8,6 @@ import json
 from unittest.mock import MagicMock, patch
 
 import pytest
-
-
-# Exception classes to simulate Ansible module exit behavior
-class AnsibleExitJson(SystemExit):
-    """Exception raised when module.exit_json() is called."""
-
-    pass
-
-
-class AnsibleFailJson(SystemExit):
-    """Exception raised when module.fail_json() is called."""
-
-    pass
-
-
 from ansible_collections.splunk.itsi.plugins.module_utils.aggregation_policy_utils import (
     flatten_policy_object,
     get_aggregation_policy_by_id,
@@ -41,6 +26,7 @@ from ansible_collections.splunk.itsi.plugins.modules.itsi_aggregation_policy imp
     main,
     update_aggregation_policy,
 )
+from conftest import AnsibleExitJson, AnsibleFailJson, make_mock_conn
 
 # Sample response payloads for testing
 SAMPLE_POLICY = {
@@ -330,12 +316,7 @@ class TestGetAggregationPolicyById:
 
     def test_get_by_id_success(self):
         """Test getting policy by ID."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": json.dumps(SAMPLE_POLICY),
-            "headers": {},
-        }
+        mock_conn = make_mock_conn(200, json.dumps(SAMPLE_POLICY))
 
         status, headers, data = get_aggregation_policy_by_id(
             ItsiRequest(mock_conn, _mock_module()),
@@ -347,12 +328,7 @@ class TestGetAggregationPolicyById:
 
     def test_get_by_id_with_fields(self):
         """Test getting policy with specific fields."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": json.dumps(SAMPLE_POLICY),
-            "headers": {},
-        }
+        mock_conn = make_mock_conn(200, json.dumps(SAMPLE_POLICY))
 
         get_aggregation_policy_by_id(
             ItsiRequest(mock_conn, _mock_module()),
@@ -364,13 +340,8 @@ class TestGetAggregationPolicyById:
         assert "fields=title%2Cdisabled" in call_args[0][0]
 
     def test_get_by_id_not_found(self):
-        """Test getting non-existent policy returns None."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 404,
-            "body": json.dumps({"error": "Not found"}),
-            "headers": {},
-        }
+        """Test getting non-existent policy."""
+        mock_conn = make_mock_conn(404, json.dumps({"error": "Not found"}))
 
         result = get_aggregation_policy_by_id(
             ItsiRequest(mock_conn, _mock_module()),
@@ -381,12 +352,7 @@ class TestGetAggregationPolicyById:
 
     def test_get_by_id_url_encoding(self):
         """Test policy_id is URL encoded."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": json.dumps(SAMPLE_POLICY),
-            "headers": {},
-        }
+        mock_conn = make_mock_conn(200, json.dumps(SAMPLE_POLICY))
 
         get_aggregation_policy_by_id(
             ItsiRequest(mock_conn, _mock_module()),
@@ -402,12 +368,7 @@ class TestCreateAggregationPolicy:
 
     def test_create_basic(self):
         """Test basic policy creation."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": json.dumps(SAMPLE_POLICY),
-            "headers": {},
-        }
+        mock_conn = make_mock_conn(200, json.dumps(SAMPLE_POLICY))
 
         policy_data = {"title": "New Policy"}
         status, headers, data = create_aggregation_policy(
@@ -421,12 +382,7 @@ class TestCreateAggregationPolicy:
 
     def test_create_with_defaults(self):
         """Test creation applies default values."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": "{}",
-            "headers": {},
-        }
+        mock_conn = make_mock_conn(200, "{}")
 
         create_aggregation_policy(ItsiRequest(mock_conn, _mock_module()), {"title": "Test"})
 
@@ -439,12 +395,7 @@ class TestCreateAggregationPolicy:
 
     def test_create_with_all_fields(self):
         """Test creation with all fields."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": "{}",
-            "headers": {},
-        }
+        mock_conn = make_mock_conn(200, "{}")
 
         policy_data = {
             "title": "Complete Policy",
@@ -525,13 +476,8 @@ class TestUpdateAggregationPolicy:
         assert payload["description"] == "New desc"  # Updated
 
     def test_update_not_found(self):
-        """Test update when policy not found (POST returns 404)."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 404,
-            "body": json.dumps({"error": "Not found"}),
-            "headers": {},
-        }
+        """Test update when policy not found."""
+        mock_conn = make_mock_conn(404, json.dumps({"error": "Not found"}))
 
         result = update_aggregation_policy(
             ItsiRequest(mock_conn, _mock_module()),
@@ -548,12 +494,7 @@ class TestDeleteAggregationPolicy:
 
     def test_delete_basic(self):
         """Test basic deletion."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 204,
-            "body": "",
-            "headers": {},
-        }
+        mock_conn = make_mock_conn(204, "")
 
         status, headers, data = delete_aggregation_policy(
             ItsiRequest(mock_conn, _mock_module()),
@@ -566,12 +507,7 @@ class TestDeleteAggregationPolicy:
 
     def test_delete_url_encoding(self):
         """Test policy_id is URL encoded."""
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 204,
-            "body": "",
-            "headers": {},
-        }
+        mock_conn = make_mock_conn(204, "")
 
         delete_aggregation_policy(
             ItsiRequest(mock_conn, _mock_module()),
@@ -614,12 +550,7 @@ class TestMain:
         mock_module.exit_json.side_effect = AnsibleExitJson
         mock_module_class.return_value = mock_module
 
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": json.dumps(SAMPLE_POLICY),
-            "headers": {},
-        }
+        mock_conn = make_mock_conn(200, json.dumps(SAMPLE_POLICY))
         mock_connection.return_value = mock_conn
 
         with pytest.raises(AnsibleExitJson):
@@ -784,12 +715,7 @@ class TestMain:
         mock_module.exit_json.side_effect = AnsibleExitJson
         mock_module_class.return_value = mock_module
 
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 404,
-            "body": "{}",
-            "headers": {},
-        }
+        mock_conn = make_mock_conn(404, "{}")
         mock_connection.return_value = mock_conn
 
         with pytest.raises(AnsibleExitJson):
@@ -901,12 +827,7 @@ class TestMain:
         mock_module.exit_json.side_effect = AnsibleExitJson
         mock_module_class.return_value = mock_module
 
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": json.dumps(SAMPLE_POLICY),
-            "headers": {},
-        }
+        mock_conn = make_mock_conn(200, json.dumps(SAMPLE_POLICY))
         mock_connection.return_value = mock_conn
 
         with pytest.raises(AnsibleExitJson):
@@ -946,12 +867,7 @@ class TestMain:
         mock_module.exit_json.side_effect = AnsibleExitJson
         mock_module_class.return_value = mock_module
 
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 200,
-            "body": json.dumps(SAMPLE_POLICY),
-            "headers": {},
-        }
+        mock_conn = make_mock_conn(200, json.dumps(SAMPLE_POLICY))
         mock_connection.return_value = mock_conn
 
         with pytest.raises(AnsibleExitJson):
@@ -1063,12 +979,7 @@ class TestMain:
         mock_module.exit_json.side_effect = AnsibleExitJson
         mock_module_class.return_value = mock_module
 
-        mock_conn = MagicMock()
-        mock_conn.send_request.return_value = {
-            "status": 404,
-            "body": "{}",
-            "headers": {},
-        }
+        mock_conn = make_mock_conn(404, "{}")
         mock_connection.return_value = mock_conn
 
         with pytest.raises(AnsibleExitJson):
