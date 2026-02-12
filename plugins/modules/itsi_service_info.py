@@ -91,22 +91,16 @@ EXAMPLES = r"""
 """
 
 RETURN = r"""
-services:
-  description: List of service objects returned by the ITSI API.
-  type: list
-  elements: dict
-  returned: always
-service:
-  description: First item from services when a single result is expected.
-  type: dict
-  returned: when a single result is found
-raw:
-  description: Raw body parsed from the server response for the last call.
-  type: raw
-  returned: always
 changed:
   description: Always false. This is an information module.
   type: bool
+  returned: always
+response:
+  description: The API response body. For service_id queries this is a single
+    service dict. For list queries this is the raw list or paging envelope
+    returned by the ITSI API. Empty dict when the requested resource is
+    not found.
+  type: raw
   returned: always
 """
 
@@ -146,23 +140,22 @@ def _build_filter(module_params: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 def _handle_get_by_id(
     client: ItsiRequest,
     service_id: str,
-    result: Dict[str, Any],
-) -> None:
-    """Handle fetching a service by its _key.
+) -> Any:
+    """Fetch a service by its _key.
 
     Args:
         client: ItsiRequest instance.
         service_id: Service _key to fetch.
-        result: Result dict to update.
+
+    Returns:
+        The service dict, or ``{}`` when not found.
     """
     path = f"{BASE}/{quote_plus(service_id)}"
     api_result = client.get(path)
     if api_result is None:
-        return
+        return {}
     _status, _headers, body = api_result
-    result["raw"] = body
-    if isinstance(body, dict):
-        result["service"] = body
+    return body
 
 
 def _build_list_params(module_params: Dict[str, Any]) -> Dict[str, Any]:
@@ -210,25 +203,6 @@ def _dedupe_fields(fields: List[Any]) -> str:
     return ",".join(field_list)
 
 
-def _parse_list_response(
-    body: Any,
-    result: Dict[str, Any],
-) -> None:
-    """Parse a list response and update the result dict.
-
-    Args:
-        body: Response body.
-        result: Result dict to update.
-    """
-    if isinstance(body, list):
-        result["items"] = body
-    elif isinstance(body, dict) and "items" in body and "size" in body:
-        result["paging"] = {"size": body.get("size"), "items": body.get("items")}
-        result["items"] = body.get("items", [])
-    else:
-        result["items"] = []
-
-
 def main() -> None:
     """Entry point for the itsi_service_info module."""
     module = AnsibleModule(
@@ -255,12 +229,11 @@ def main() -> None:
 
     result: Dict[str, Any] = {
         "changed": False,
-        "raw": {},
-        "items": [],
+        "response": {},
     }
 
     if module_params.get("service_id"):
-        _handle_get_by_id(client, module_params["service_id"], result)
+        result["response"] = _handle_get_by_id(client, module_params["service_id"])
         module.exit_json(**result)
 
     params = _build_list_params(module_params)
@@ -268,8 +241,7 @@ def main() -> None:
     if api_result is None:
         module.exit_json(**result)
     _status, _headers, body = api_result
-    result["raw"] = body
-    _parse_list_response(body, result)
+    result["response"] = body
 
     module.exit_json(**result)
 

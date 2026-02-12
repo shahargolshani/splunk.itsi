@@ -12,10 +12,10 @@
   splunk.itsi.itsi_aggregation_policy:
     policy_id: "{{ item._key }}"
     state: absent
-  loop: "{{ cleanup_find_result.aggregation_policies | default([]) }}"
+  loop: "{{ cleanup_find_result.response.aggregation_policies | default([]) }}"
   register: cleanup_result
   ignore_errors: true
-  when: cleanup_find_result.aggregation_policies is defined and cleanup_find_result.aggregation_policies | length > 0
+  when: cleanup_find_result.response.aggregation_policies is defined and cleanup_find_result.response.aggregation_policies | length > 0
 
 - name: Debug cleanup result
   ansible.builtin.debug:

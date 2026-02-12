@@ -155,33 +155,38 @@ EXAMPLES = r"""
 """
 
 RETURN = r"""
-status:
-  description: HTTP status code from the ITSI API response
-  returned: always
-  type: int
-  sample: 200
-headers:
-  description: HTTP response headers from the ITSI API
-  returned: always
-  type: dict
-  sample:
-    Content-Type: application/json
-    Server: Splunkd
-body:
-  description: Response body from the ITSI API
-  returned: always
-  type: str
-  sample: '{"name": "test-search", "disabled": "0"}'
 changed:
-  description: Whether the correlation search was modified
-  returned: always
+  description: Whether the correlation search was modified.
   type: bool
-  sample: true
-operation:
-  description: The operation that was performed (create, update, delete, no_change)
   returned: always
-  type: str
-  sample: "create"
+  sample: true
+before:
+  description: Search state before the operation. Empty dict on create or when already absent.
+  type: dict
+  returned: always
+  sample:
+    search: "index=itsi | head 1"
+    disabled: "0"
+after:
+  description: Search state after the operation. Empty dict on delete.
+  type: dict
+  returned: always
+  sample:
+    search: "index=itsi | head 1"
+    disabled: "0"
+diff:
+  description: Fields that differ between before and after. Empty dict when unchanged.
+  type: dict
+  returned: always
+  sample:
+    cron_schedule: "*/5 * * * *"
+response:
+  description: Raw HTTP API response body from the last API call.
+  type: dict
+  returned: always
+  sample:
+    name: "test-search"
+    disabled: "0"
 """
 
 
@@ -317,18 +322,6 @@ def _should_set_is_scheduled(existing_flat: dict, diff: dict) -> bool:
 
 
 # ------------------------------------------------------------------
-# Result helper
-# ------------------------------------------------------------------
-
-
-def _result(changed, status, headers, body, **extra):
-    """Build a unified result dict."""
-    r = {"changed": changed, "status": status, "headers": headers, "body": body}
-    r.update(extra)
-    return r
-
-
-# ------------------------------------------------------------------
 # Business logic
 # ------------------------------------------------------------------
 
@@ -366,48 +359,52 @@ def _handle_state_present(module, client, params: dict, result: dict):
 
     desired_data = _build_desired_data(params, search_identifier)
 
-    if module.check_mode:
-        result.update(
-            _result(
-                True,
-                0,
-                {},
-                desired_data,
-                check_mode=True,
-                operation="update" if exists else "create",
-            ),
-        )
-        return
-
-    # Create
+    # --- Create ---
     if not exists:
-        _status, _hdr, _body = create_correlation_search(client, desired_data)
-        # Re-fetch to get the uniform flattened shape
-        after = get_correlation_search(client, search_identifier, use_name_encoding=use_name_encoding)
-        body = after[2] if after is not None else {}
-        result.update(_result(True, _status, _hdr, body))
+        result["before"] = {}
+        result["after"] = desired_data
+        result["diff"] = desired_data
+        result["changed"] = True
+        if not module.check_mode:
+            _status, _hdr, _body = create_correlation_search(client, desired_data)
+            result["response"] = _body
+            # Re-fetch to get the uniform flattened shape
+            after = get_correlation_search(client, search_identifier, use_name_encoding=use_name_encoding)
+            if after is not None:
+                result["after"] = after[2]
         return
 
-    # Update path – idempotency check
-    _cur_status, cur_hdr, cur_obj = current
+    # --- Update ---
+    _cur_status, _cur_hdr, cur_obj = current
     existing_flat = flatten_search_object(cur_obj) if isinstance(cur_obj, dict) else {}
+    result["before"] = existing_flat
+
     current_c = _canonicalize(existing_flat)
     desired_c = _canonicalize(desired_data)
 
     complete_desired = dict(current_c)
     complete_desired.update(desired_c)
-    diff = _diff_canonical(complete_desired, current_c)
+    diff_check = _diff_canonical(complete_desired, current_c)
 
-    if not diff:
-        result.update(_result(False, _cur_status, cur_hdr, cur_obj))
+    if not diff_check:
+        result["after"] = existing_flat
         return
 
-    update_payload = dict(desired_c)
-    if _should_set_is_scheduled(existing_flat, diff):
-        update_payload["is_scheduled"] = "1"
+    # Build a simple diff: {field: new_value}
+    diff = {k: v[1] for k, v in diff_check.items()}
+    after = dict(existing_flat)
+    after.update(desired_c)
 
-    _status, _hdr, _body = update_correlation_search(client, search_identifier, update_payload)
-    result.update(_result(True, _status, _hdr, _body, diff=diff))
+    result["changed"] = True
+    result["diff"] = diff
+    result["after"] = after
+
+    if not module.check_mode:
+        update_payload = dict(desired_c)
+        if _should_set_is_scheduled(existing_flat, diff_check):
+            update_payload["is_scheduled"] = "1"
+        _status, _hdr, _body = update_correlation_search(client, search_identifier, update_payload)
+        result["response"] = _body
 
 
 def _handle_absent_state(module, client, params: dict, result: dict):
@@ -420,22 +417,24 @@ def _handle_absent_state(module, client, params: dict, result: dict):
         module.fail_json(msg="Either 'name' or 'correlation_search_id' is required for absent state")
 
     use_name_encoding = correlation_search_id is None and name is not None
-    exists = get_correlation_search(client, search_identifier, use_name_encoding=use_name_encoding) is not None
+    current = get_correlation_search(client, search_identifier, use_name_encoding=use_name_encoding)
 
-    if not exists:
-        result.update(_result(False, 0, {}, {}, msg="Correlation search already absent"))
+    if current is None:
+        # Already absent
         return
 
-    if module.check_mode:
-        result.update(_result(True, 0, {}, {}, check_mode=True))
-        return
+    _cur_status, _cur_hdr, cur_obj = current
+    existing_flat = flatten_search_object(cur_obj) if isinstance(cur_obj, dict) else {}
 
-    del_result = delete_correlation_search(client, search_identifier, use_name_encoding=use_name_encoding)
-    if del_result is None:
-        result.update(_result(True, 0, {}, {}))
-    else:
-        _status, _hdr, body = del_result
-        result.update(_result(True, _status, _hdr, body))
+    result["changed"] = True
+    result["before"] = existing_flat
+    result["diff"] = existing_flat
+
+    if not module.check_mode:
+        del_result = delete_correlation_search(client, search_identifier, use_name_encoding=use_name_encoding)
+        if del_result is not None:
+            _status, _hdr, body = del_result
+            result["response"] = body
 
 
 def main():
@@ -460,7 +459,7 @@ def main():
         module.fail_json(msg="Use ansible_connection=httpapi and ansible_network_os=splunk.itsi.itsi_api_client")
 
     client = ItsiRequest(Connection(module._socket_path), module)
-    result = {"changed": False, "status": 0, "headers": {}, "body": {}}
+    result = {"changed": False, "before": {}, "after": {}, "diff": {}, "response": {}}
 
     state = module.params["state"]
     if state == "present":

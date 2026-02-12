@@ -68,21 +68,21 @@ EXAMPLES = r"""
 - name: Get all aggregation policies
   splunk.itsi.itsi_aggregation_policy_info:
   register: all_policies
-# Access: all_policies.aggregation_policies
+# Access: all_policies.response.aggregation_policies
 
-# Get aggregation policy by ID (returns single-element list)
+# Get aggregation policy by ID
 - name: Get aggregation policy by ID
   splunk.itsi.itsi_aggregation_policy_info:
     policy_id: "itsi_default_policy"
   register: policy_by_id
-# Access: policy_by_id.aggregation_policies[0]
+# Access: policy_by_id.response (single policy dict)
 
 # Get aggregation policies by title (may return multiple)
 - name: Get all aggregation policies with a specific title
   splunk.itsi.itsi_aggregation_policy_info:
     title: "Default Policy"
   register: policies_by_title
-# Access: policies_by_title.aggregation_policies (list of all matching)
+# Access: policies_by_title.response.aggregation_policies
 
 # Get aggregation policy with specific fields only
 - name: Get aggregation policy with field projection
@@ -106,26 +106,17 @@ EXAMPLES = r"""
 """
 
 RETURN = r"""
-aggregation_policies:
-  description: List of aggregation policies matching the query
-  type: list
-  elements: dict
+changed:
+  description: Always false. This is an information module.
+  type: bool
   returned: always
-  sample:
-    - title: "Policy 1"
-      _key: "policy1"
-    - title: "Policy 2"
-      _key: "policy2"
-status:
-  description: HTTP status code from the API response
-  type: int
+response:
+  description: The API response body. For policy_id queries this is a single
+    policy dict. For title and list queries this is a dict with an
+    C(aggregation_policies) key containing a list of matching policies.
+    Empty dict when the requested resource is not found.
+  type: raw
   returned: always
-  sample: 200
-headers:
-  description: HTTP response headers from the API
-  type: dict
-  returned: always
-  sample: {"content-type": "application/json"}
 """
 
 # Ansible imports
@@ -162,32 +153,44 @@ def get_aggregation_policies_by_title(
 
 
 def _query_by_policy_id(client, policy_id, fields):
-    """Query a specific aggregation policy by ID."""
+    """Query a specific aggregation policy by ID.
+
+    Returns:
+        The flattened policy dict, or ``{}`` when not found.
+    """
     api_result = get_aggregation_policy_by_id(client, policy_id, fields)
     if api_result is None:
-        return {"status": 0, "headers": {}, "body": {}, "aggregation_policies": []}
-    status, headers, body = api_result
-    return {"status": status, "headers": headers, "body": body, "aggregation_policies": [body]}
+        return {}
+    _status, _headers, body = api_result
+    return body
 
 
 def _query_by_title(client, title, fields):
-    """Query aggregation policies by title (may return multiple)."""
+    """Query aggregation policies by title (may return multiple).
+
+    Returns:
+        ``{"aggregation_policies": [...]}``, or ``{}`` when the API
+        returns nothing.
+    """
     api_result = get_aggregation_policies_by_title(client, title, fields)
     if api_result is None:
-        return {"status": 0, "headers": {}, "body": {}, "aggregation_policies": []}
-    status, headers, body = api_result
-    policies = body.get("aggregation_policies", []) if isinstance(body, dict) else []
-    return {"status": status, "headers": headers, "body": body, "aggregation_policies": policies}
+        return {}
+    _status, _headers, body = api_result
+    return body
 
 
 def _list_all_policies(client, fields, filter_data, limit):
-    """List all aggregation policies."""
+    """List all aggregation policies.
+
+    Returns:
+        ``{"aggregation_policies": [...]}``, or ``{}`` when the API
+        returns nothing.
+    """
     api_result = list_aggregation_policies(client, fields, filter_data, limit)
     if api_result is None:
-        return {"status": 0, "headers": {}, "body": {}, "aggregation_policies": []}
-    status, headers, body = api_result
-    policies = body.get("aggregation_policies", []) if isinstance(body, dict) else []
-    return {"status": status, "headers": headers, "body": body, "aggregation_policies": policies}
+        return {}
+    _status, _headers, body = api_result
+    return body
 
 
 def main():
@@ -213,14 +216,15 @@ def main():
     title = module.params.get("title")
     fields = module.params.get("fields")
 
-    if policy_id:
-        result = _query_by_policy_id(client, policy_id, fields)
-    elif title:
-        result = _query_by_title(client, title, fields)
-    else:
-        result = _list_all_policies(client, fields, module.params.get("filter_data"), module.params.get("limit"))
+    result: dict = {"changed": False, "response": {}}
 
-    result["changed"] = False
+    if policy_id:
+        result["response"] = _query_by_policy_id(client, policy_id, fields)
+    elif title:
+        result["response"] = _query_by_title(client, title, fields)
+    else:
+        result["response"] = _list_all_policies(client, fields, module.params.get("filter_data"), module.params.get("limit"))
+
     module.exit_json(**result)
 
 

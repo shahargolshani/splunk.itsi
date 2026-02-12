@@ -65,22 +65,25 @@ EXAMPLES = r"""
 - name: Get all correlation searches
   splunk.itsi.itsi_correlation_search_info:
   register: all_searches
+# Access: all_searches.response.correlation_searches
 
 - name: Display correlation search count
   debug:
-    msg: "Found {{ all_searches.correlation_searches | length }} correlation searches"
+    msg: "Found {{ all_searches.response.correlation_searches | length }} correlation searches"
 
 # Query specific correlation search by ID
 - name: Get correlation search by ID
   splunk.itsi.itsi_correlation_search_info:
     correlation_search_id: "Service_Monitoring_KPI_Degraded"
   register: search_by_id
+# Access: search_by_id.response (single search dict)
 
 # Query correlation search by display name
 - name: Get correlation search by name
   splunk.itsi.itsi_correlation_search_info:
     name: "Service Monitoring - KPI Degraded"
   register: search_by_name
+# Access: search_by_name.response (single search dict)
 
 # Query with specific fields only
 - name: Get correlation search with specific fields
@@ -104,34 +107,16 @@ EXAMPLES = r"""
 """
 
 RETURN = r"""
-status:
-  description: HTTP status code from the ITSI API response
+changed:
+  description: Always false. This is an information module.
+  type: bool
   returned: always
-  type: int
-  sample: 200
-headers:
-  description: HTTP response headers from the ITSI API
+response:
+  description: The API response body. For single-search queries (by ID or name)
+    this is the flattened search dict, or empty dict when not found. For list
+    queries this is a dict with a C(correlation_searches) key.
+  type: raw
   returned: always
-  type: dict
-  sample:
-    Content-Type: application/json
-    Server: Splunkd
-body:
-  description: Response body from the ITSI API
-  returned: always
-  type: str
-  sample: '{"name": "test-search", "disabled": "0"}'
-correlation_searches:
-  description: List of correlation searches (when listing multiple)
-  returned: when no specific search is requested
-  type: list
-  elements: dict
-  sample: [{"name": "Search 1", "disabled": "0"}, {"name": "Search 2", "disabled": "1"}]
-correlation_search:
-  description: Single correlation search details
-  returned: when specific search is requested
-  type: dict
-  sample: {"name": "test-search", "disabled": "0", "search": "index=main | head 1"}
 """
 
 
@@ -144,8 +129,12 @@ from ansible_collections.splunk.itsi.plugins.module_utils.correlation_search_uti
 from ansible_collections.splunk.itsi.plugins.module_utils.itsi_request import ItsiRequest
 
 
-def _query_single_search(client, params: dict, result: dict):
-    """Query a specific correlation search by ID or name."""
+def _query_single_search(client, params: dict):
+    """Query a specific correlation search by ID or name.
+
+    Returns:
+        The flattened search dict, or ``{}`` when not found.
+    """
     correlation_search_id = params.get("correlation_search_id")
     name = params.get("name")
     fields = params.get("fields")
@@ -156,29 +145,25 @@ def _query_single_search(client, params: dict, result: dict):
         api_result = get_correlation_search(client, name, fields, use_name_encoding=True)
 
     if api_result is None:
-        result.update({"status": 0, "headers": {}, "body": {}, "correlation_search": None})
-        return
+        return {}
 
-    status, headers, body = api_result
-    result.update({"status": status, "headers": headers, "body": body, "correlation_search": body})
+    _status, _headers, body = api_result
+    return body
 
 
-def _query_all_searches(client, params: dict, result: dict):
-    """List all correlation searches."""
+def _query_all_searches(client, params: dict):
+    """List all correlation searches.
+
+    Returns:
+        ``{"correlation_searches": [...]}``, or ``{}`` when the API
+        returns nothing.
+    """
     api_result = list_correlation_searches(client, params.get("fields"), params.get("filter_data"), params.get("count"))
     if api_result is None:
-        result.update({"status": 0, "headers": {}, "body": {}, "correlation_searches": []})
-        return
+        return {}
 
-    status, headers, body = api_result
-    result.update(
-        {
-            "status": status,
-            "headers": headers,
-            "body": body,
-            "correlation_searches": body.get("correlation_searches", []) if isinstance(body, dict) else [],
-        },
-    )
+    _status, _headers, body = api_result
+    return body
 
 
 def main():
@@ -197,13 +182,13 @@ def main():
         module.fail_json(msg="Use ansible_connection=httpapi and ansible_network_os=splunk.itsi.itsi_api_client")
 
     client = ItsiRequest(Connection(module._socket_path), module)
-    result = {"changed": False, "status": 0, "headers": {}, "body": {}}
+    result: dict = {"changed": False, "response": {}}
 
     search_identifier = module.params.get("correlation_search_id") or module.params.get("name")
     if search_identifier:
-        _query_single_search(client, module.params, result)
+        result["response"] = _query_single_search(client, module.params)
     else:
-        _query_all_searches(client, module.params, result)
+        result["response"] = _query_all_searches(client, module.params)
 
     module.exit_json(**result)
 

@@ -359,18 +359,17 @@ Examples
           items: []
         state: present
       register: create_result
-    # Note: create_result.aggregation_policies[0]._key contains the generated policy_id
+    # create_result.response._key contains the generated policy_id
 
     # Update existing aggregation policy (policy_id required, title optional)
     - name: Update aggregation policy settings
       splunk.itsi.itsi_aggregation_policy:
-        policy_id: "{{ create_result.aggregation_policies[0]._key }}"
+        policy_id: "{{ create_result.response._key }}"
         group_severity: "high"
         disabled: false
         state: present
       register: update_result
-    # Only updates if group_severity or disabled actually changed
-    # Title not required for updates - policy is identified by policy_id
+    # update_result.diff shows fields that changed
 
     # Update using additional fields
     - name: Update aggregation policy with custom fields
@@ -384,19 +383,18 @@ Examples
     # Delete aggregation policy (policy_id required)
     - name: Remove aggregation policy
       splunk.itsi.itsi_aggregation_policy:
-        policy_id: "{{ create_result.aggregation_policies[0]._key }}"
+        policy_id: "{{ create_result.response._key }}"
         state: absent
       register: delete_result
 
-    # Error handling example
-    - name: Create aggregation policy with error handling
+    # Create with error handling
+    - name: Create aggregation policy
       splunk.itsi.itsi_aggregation_policy:
         title: "Critical Service Alert Policy"
         description: "Groups critical service alerts"
         group_severity: "critical"
         state: present
       register: result
-      failed_when: result.status >= 400 and result.status != 409
 
 
 
@@ -415,36 +413,35 @@ Common return values are documented `here <https://docs.ansible.com/ansible/late
             <tr>
                 <td colspan="1">
                     <div class="ansibleOptionAnchor" id="return-"></div>
-                    <b>aggregation_policies</b>
+                    <b>after</b>
                     <a class="ansibleOptionLink" href="#return-" title="Permalink to this return value"></a>
                     <div style="font-size: small">
-                      <span style="color: purple">list</span>
-                       / <span style="color: purple">elements=dictionary</span>
+                      <span style="color: purple">dictionary</span>
                     </div>
                 </td>
-                <td>when operation succeeded</td>
+                <td>always</td>
                 <td>
-                            <div>List containing the aggregation policy data after the operation</div>
+                            <div>Policy state after the operation. Empty dict on delete.</div>
                     <br/>
                         <div style="font-size: smaller"><b>Sample:</b></div>
-                        <div style="font-size: smaller; color: blue; word-wrap: break-word; word-break: break-all;">[{&#x27;title&#x27;: &#x27;Default Policy&#x27;, &#x27;description&#x27;: &#x27;Default aggregation policy&#x27;, &#x27;disabled&#x27;: 0, &#x27;_key&#x27;: &#x27;itsi_default_policy&#x27;}]</div>
+                        <div style="font-size: smaller; color: blue; word-wrap: break-word; word-break: break-all;">{&#x27;group_severity&#x27;: &#x27;high&#x27;, &#x27;disabled&#x27;: 0}</div>
                 </td>
             </tr>
             <tr>
                 <td colspan="1">
                     <div class="ansibleOptionAnchor" id="return-"></div>
-                    <b>body</b>
+                    <b>before</b>
                     <a class="ansibleOptionLink" href="#return-" title="Permalink to this return value"></a>
                     <div style="font-size: small">
-                      <span style="color: purple">string</span>
+                      <span style="color: purple">dictionary</span>
                     </div>
                 </td>
                 <td>always</td>
                 <td>
-                            <div>Raw response body from the API</div>
+                            <div>Policy state before the operation. Empty dict on create or when already absent.</div>
                     <br/>
                         <div style="font-size: smaller"><b>Sample:</b></div>
-                        <div style="font-size: smaller; color: blue; word-wrap: break-word; word-break: break-all;">{&quot;_key&quot;: &quot;policy123&quot;}</div>
+                        <div style="font-size: smaller; color: blue; word-wrap: break-word; word-break: break-all;">{&#x27;group_severity&#x27;: &#x27;medium&#x27;, &#x27;disabled&#x27;: 0}</div>
                 </td>
             </tr>
             <tr>
@@ -458,7 +455,7 @@ Common return values are documented `here <https://docs.ansible.com/ansible/late
                 </td>
                 <td>always</td>
                 <td>
-                            <div>Whether the aggregation policy was modified</div>
+                            <div>Whether the aggregation policy was modified.</div>
                     <br/>
                         <div style="font-size: smaller"><b>Sample:</b></div>
                         <div style="font-size: smaller; color: blue; word-wrap: break-word; word-break: break-all;">True</div>
@@ -473,18 +470,18 @@ Common return values are documented `here <https://docs.ansible.com/ansible/late
                       <span style="color: purple">dictionary</span>
                     </div>
                 </td>
-                <td>when operation=update and changes detected</td>
+                <td>always</td>
                 <td>
-                            <div>Differences between current and desired state (update operations)</div>
+                            <div>Fields that differ between before and after. Empty dict when unchanged.</div>
                     <br/>
                         <div style="font-size: smaller"><b>Sample:</b></div>
-                        <div style="font-size: smaller; color: blue; word-wrap: break-word; word-break: break-all;">{&#x27;group_severity&#x27;: [&#x27;medium&#x27;, &#x27;high&#x27;], &#x27;disabled&#x27;: [&#x27;1&#x27;, &#x27;0&#x27;]}</div>
+                        <div style="font-size: smaller; color: blue; word-wrap: break-word; word-break: break-all;">{&#x27;group_severity&#x27;: &#x27;high&#x27;}</div>
                 </td>
             </tr>
             <tr>
                 <td colspan="1">
                     <div class="ansibleOptionAnchor" id="return-"></div>
-                    <b>headers</b>
+                    <b>response</b>
                     <a class="ansibleOptionLink" href="#return-" title="Permalink to this return value"></a>
                     <div style="font-size: small">
                       <span style="color: purple">dictionary</span>
@@ -492,44 +489,10 @@ Common return values are documented `here <https://docs.ansible.com/ansible/late
                 </td>
                 <td>always</td>
                 <td>
-                            <div>HTTP response headers from the API</div>
+                            <div>Raw HTTP API response body from the last API call.</div>
                     <br/>
                         <div style="font-size: smaller"><b>Sample:</b></div>
-                        <div style="font-size: smaller; color: blue; word-wrap: break-word; word-break: break-all;">{&#x27;content-type&#x27;: &#x27;application/json&#x27;}</div>
-                </td>
-            </tr>
-            <tr>
-                <td colspan="1">
-                    <div class="ansibleOptionAnchor" id="return-"></div>
-                    <b>operation</b>
-                    <a class="ansibleOptionLink" href="#return-" title="Permalink to this return value"></a>
-                    <div style="font-size: small">
-                      <span style="color: purple">string</span>
-                    </div>
-                </td>
-                <td>always</td>
-                <td>
-                            <div>The operation performed (create, update, delete, no_change, error)</div>
-                    <br/>
-                        <div style="font-size: smaller"><b>Sample:</b></div>
-                        <div style="font-size: smaller; color: blue; word-wrap: break-word; word-break: break-all;">create</div>
-                </td>
-            </tr>
-            <tr>
-                <td colspan="1">
-                    <div class="ansibleOptionAnchor" id="return-"></div>
-                    <b>status</b>
-                    <a class="ansibleOptionLink" href="#return-" title="Permalink to this return value"></a>
-                    <div style="font-size: small">
-                      <span style="color: purple">integer</span>
-                    </div>
-                </td>
-                <td>always</td>
-                <td>
-                            <div>HTTP status code from the API response</div>
-                    <br/>
-                        <div style="font-size: smaller"><b>Sample:</b></div>
-                        <div style="font-size: smaller; color: blue; word-wrap: break-word; word-break: break-all;">200</div>
+                        <div style="font-size: smaller; color: blue; word-wrap: break-word; word-break: break-all;">{&#x27;_key&#x27;: &#x27;policy123&#x27;, &#x27;title&#x27;: &#x27;Default Policy&#x27;}</div>
                 </td>
             </tr>
     </table>

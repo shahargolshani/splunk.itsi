@@ -1,0 +1,4 @@
+---
+minor_changes:
+  - Standardize return result across all modules `(changed, before, after, diff, response)`
+  - Standardize return result across all info modules `(changed, response)`

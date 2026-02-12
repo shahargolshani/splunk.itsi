@@ -40,7 +40,7 @@
     - name: "Step 1 - Assert correlation search was not actually created in check mode"
       ansible.builtin.assert:
         that:
-          - verify_not_created.correlation_search is none
+          - verify_not_created.response | length == 0
         fail_msg: "Correlation search should NOT exist after check mode"
         success_msg: "Verified: Check mode did not create the correlation search"
 
@@ -117,13 +117,13 @@
     - name: "Step 4 - Assert updated values are correct"
       ansible.builtin.assert:
         that:
-          - info_after_update.correlation_search is defined
+          - info_after_update.response | length > 0
         fail_msg: "Info module should return updated correlation search"
         success_msg: "Verified: Correlation search was updated successfully"
 
     - name: "Step 4 - Debug updated correlation search"
       ansible.builtin.debug:
-        var: info_after_update.correlation_search
+        var: info_after_update.response
         verbosity: 1
 
     # =========================================================================
@@ -157,8 +157,7 @@
       ansible.builtin.assert:
         that:
           - info_by_name.changed == false
-          - info_by_name.correlation_search is defined
-          - info_by_name.correlation_search is not none
+          - info_by_name.response | length > 0
         fail_msg: "Info module query by name should succeed"
         success_msg: "Info module query by name succeeded"
 
@@ -170,9 +169,9 @@
       ansible.builtin.assert:
         that:
           - info_list_all.changed == false
-          - info_list_all.correlation_searches is defined
+          - info_list_all.response.correlation_searches is defined
         fail_msg: "Info module list all should succeed"
-        success_msg: "Info module list all succeeded - found {{ info_list_all.correlation_searches | length }} searches"
+        success_msg: "Info module list all succeeded - found {{ info_list_all.response.correlation_searches | length }} searches"
 
     - name: "Step 6d - List correlation searches with count limit (using info module)"
       splunk.itsi.itsi_correlation_search_info:
@@ -183,14 +182,14 @@
       ansible.builtin.assert:
         that:
           - info_limited.changed == false
-          - info_limited.correlation_searches is defined
-          - info_limited.correlation_searches | length == 3
-        fail_msg: "Info module limited query should return exactly 3 correlation searches, got {{ info_limited.correlation_searches | length | default(0) }}"
-        success_msg: "Info module limited query succeeded - returned {{ info_limited.correlation_searches | length }} searches as expected"
+          - info_limited.response.correlation_searches is defined
+          - info_limited.response.correlation_searches | length == 3
+        fail_msg: "Info module limited query should return exactly 3 correlation searches, got {{ info_limited.response.correlation_searches | length | default(0) }}"
+        success_msg: "Info module limited query succeeded - returned {{ info_limited.response.correlation_searches | length }} searches as expected"
 
     - name: "Step 6 - Debug correlation search info"
       ansible.builtin.debug:
-        var: info_by_name.correlation_search
+        var: info_by_name.response
         verbosity: 1
 
     # =========================================================================
@@ -207,8 +206,8 @@
       ansible.builtin.assert:
         that:
           - check_mode_delete_result.changed == true
-          - check_mode_delete_result.check_mode == true
-        fail_msg: "Check mode delete should report changed=true"
+          - check_mode_delete_result.before | length > 0
+        fail_msg: "Check mode delete should report changed=true with non-empty before"
         success_msg: "Check mode delete correctly reports would delete"
 
     - name: "Step 7 - Verify correlation search still exists after check mode delete (using info module)"
@@ -219,8 +218,7 @@
     - name: "Step 7 - Assert correlation search was not deleted in check mode"
       ansible.builtin.assert:
         that:
-          - verify_still_exists.correlation_search is defined
-          - verify_still_exists.correlation_search is not none
+          - verify_still_exists.response | length > 0
         fail_msg: "Correlation search should still exist after check mode delete"
         success_msg: "Verified: Check mode did not delete the correlation search"
 
@@ -268,7 +266,7 @@
       ansible.builtin.assert:
         that:
           - info_after_delete.changed == false
-          - info_after_delete.correlation_search is none
+          - info_after_delete.response | length == 0
         fail_msg: "Correlation search should not exist after deletion"
         success_msg: "Verified: Correlation search no longer exists after deletion"
 
@@ -281,7 +279,7 @@
       ansible.builtin.assert:
         that:
           - info_nonexistent.changed == false
-          - info_nonexistent.correlation_search is none
+          - info_nonexistent.response | length == 0
         fail_msg: "Non-existent query should be handled gracefully"
         success_msg: "Non-existent query handled gracefully"
 

@@ -610,7 +610,13 @@ class TestEnsurePresent:
 
         mock_module = _mock_module()
         mock_module.check_mode = False
-        result = {}
+        result = {
+            "changed": False,
+            "before": {},
+            "after": {},
+            "diff": {},
+            "response": {},
+        }
         params = _default_params(
             name="Test Search",
             search="index=main | head 1",
@@ -829,7 +835,7 @@ class TestMain:
         mock_module.exit_json.assert_called_once()
         call_kwargs = mock_module.exit_json.call_args[1]
         assert call_kwargs["changed"] is True
-        assert call_kwargs["operation"] == "create"
+        assert call_kwargs["before"] == {}
 
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_correlation_search.Connection")
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_correlation_search.AnsibleModule")
@@ -864,7 +870,7 @@ class TestMain:
         mock_module.exit_json.assert_called_once()
         call_kwargs = mock_module.exit_json.call_args[1]
         assert call_kwargs["changed"] is True
-        assert call_kwargs["operation"] == "update"
+        assert call_kwargs["diff"]
 
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_correlation_search.Connection")
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_correlation_search.AnsibleModule")
@@ -1062,8 +1068,7 @@ class TestMain:
 
         mock_module.exit_json.assert_called_once()
         call_kwargs = mock_module.exit_json.call_args[1]
-        body = call_kwargs["body"]
-        data = body if isinstance(body, dict) else json.loads(body)
+        data = call_kwargs["after"]
         assert data["custom_field"] == "custom_value"
 
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_correlation_search.Connection")
@@ -1166,8 +1171,7 @@ class TestMain:
 
         mock_module.exit_json.assert_called_once()
         call_kwargs = mock_module.exit_json.call_args[1]
-        body = call_kwargs["body"]
-        data = body if isinstance(body, dict) else json.loads(body)
+        data = call_kwargs["after"]
         assert data["search"] == "index=main | head 1"
         assert data["disabled"] is False
         assert data["cron_schedule"] == "*/5 * * * *"

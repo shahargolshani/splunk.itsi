@@ -150,21 +150,21 @@ Examples
     - name: Get all aggregation policies
       splunk.itsi.itsi_aggregation_policy_info:
       register: all_policies
-    # Access: all_policies.aggregation_policies
+    # Access: all_policies.response.aggregation_policies
 
-    # Get aggregation policy by ID (returns single-element list)
+    # Get aggregation policy by ID
     - name: Get aggregation policy by ID
       splunk.itsi.itsi_aggregation_policy_info:
         policy_id: "itsi_default_policy"
       register: policy_by_id
-    # Access: policy_by_id.aggregation_policies[0]
+    # Access: policy_by_id.response (single policy dict)
 
     # Get aggregation policies by title (may return multiple)
     - name: Get all aggregation policies with a specific title
       splunk.itsi.itsi_aggregation_policy_info:
         title: "Default Policy"
       register: policies_by_title
-    # Access: policies_by_title.aggregation_policies (list of all matching)
+    # Access: policies_by_title.response.aggregation_policies
 
     # Get aggregation policy with specific fields only
     - name: Get aggregation policy with field projection
@@ -203,53 +203,31 @@ Common return values are documented `here <https://docs.ansible.com/ansible/late
             <tr>
                 <td colspan="1">
                     <div class="ansibleOptionAnchor" id="return-"></div>
-                    <b>aggregation_policies</b>
+                    <b>changed</b>
                     <a class="ansibleOptionLink" href="#return-" title="Permalink to this return value"></a>
                     <div style="font-size: small">
-                      <span style="color: purple">list</span>
-                       / <span style="color: purple">elements=dictionary</span>
+                      <span style="color: purple">boolean</span>
                     </div>
                 </td>
                 <td>always</td>
                 <td>
-                            <div>List of aggregation policies matching the query</div>
+                            <div>Always false. This is an information module.</div>
                     <br/>
-                        <div style="font-size: smaller"><b>Sample:</b></div>
-                        <div style="font-size: smaller; color: blue; word-wrap: break-word; word-break: break-all;">[{&#x27;title&#x27;: &#x27;Policy 1&#x27;, &#x27;_key&#x27;: &#x27;policy1&#x27;}, {&#x27;title&#x27;: &#x27;Policy 2&#x27;, &#x27;_key&#x27;: &#x27;policy2&#x27;}]</div>
                 </td>
             </tr>
             <tr>
                 <td colspan="1">
                     <div class="ansibleOptionAnchor" id="return-"></div>
-                    <b>headers</b>
+                    <b>response</b>
                     <a class="ansibleOptionLink" href="#return-" title="Permalink to this return value"></a>
                     <div style="font-size: small">
-                      <span style="color: purple">dictionary</span>
+                      <span style="color: purple">raw</span>
                     </div>
                 </td>
                 <td>always</td>
                 <td>
-                            <div>HTTP response headers from the API</div>
+                            <div>The API response body. For policy_id queries this is a single policy dict. For title and list queries this is a dict with an <code>aggregation_policies</code> key containing a list of matching policies. Empty dict when the requested resource is not found.</div>
                     <br/>
-                        <div style="font-size: smaller"><b>Sample:</b></div>
-                        <div style="font-size: smaller; color: blue; word-wrap: break-word; word-break: break-all;">{&#x27;content-type&#x27;: &#x27;application/json&#x27;}</div>
-                </td>
-            </tr>
-            <tr>
-                <td colspan="1">
-                    <div class="ansibleOptionAnchor" id="return-"></div>
-                    <b>status</b>
-                    <a class="ansibleOptionLink" href="#return-" title="Permalink to this return value"></a>
-                    <div style="font-size: small">
-                      <span style="color: purple">integer</span>
-                    </div>
-                </td>
-                <td>always</td>
-                <td>
-                            <div>HTTP status code from the API response</div>
-                    <br/>
-                        <div style="font-size: smaller"><b>Sample:</b></div>
-                        <div style="font-size: smaller; color: blue; word-wrap: break-word; word-break: break-all;">200</div>
                 </td>
             </tr>
     </table>

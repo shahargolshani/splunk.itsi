@@ -321,18 +321,35 @@ Common return values are documented `here <https://docs.ansible.com/ansible/late
             <tr>
                 <td colspan="1">
                     <div class="ansibleOptionAnchor" id="return-"></div>
-                    <b>body</b>
+                    <b>after</b>
                     <a class="ansibleOptionLink" href="#return-" title="Permalink to this return value"></a>
                     <div style="font-size: small">
-                      <span style="color: purple">string</span>
+                      <span style="color: purple">dictionary</span>
                     </div>
                 </td>
                 <td>always</td>
                 <td>
-                            <div>Response body from the ITSI API</div>
+                            <div>Search state after the operation. Empty dict on delete.</div>
                     <br/>
                         <div style="font-size: smaller"><b>Sample:</b></div>
-                        <div style="font-size: smaller; color: blue; word-wrap: break-word; word-break: break-all;">{&quot;name&quot;: &quot;test-search&quot;, &quot;disabled&quot;: &quot;0&quot;}</div>
+                        <div style="font-size: smaller; color: blue; word-wrap: break-word; word-break: break-all;">{&#x27;search&#x27;: &#x27;index=itsi | head 1&#x27;, &#x27;disabled&#x27;: &#x27;0&#x27;}</div>
+                </td>
+            </tr>
+            <tr>
+                <td colspan="1">
+                    <div class="ansibleOptionAnchor" id="return-"></div>
+                    <b>before</b>
+                    <a class="ansibleOptionLink" href="#return-" title="Permalink to this return value"></a>
+                    <div style="font-size: small">
+                      <span style="color: purple">dictionary</span>
+                    </div>
+                </td>
+                <td>always</td>
+                <td>
+                            <div>Search state before the operation. Empty dict on create or when already absent.</div>
+                    <br/>
+                        <div style="font-size: smaller"><b>Sample:</b></div>
+                        <div style="font-size: smaller; color: blue; word-wrap: break-word; word-break: break-all;">{&#x27;search&#x27;: &#x27;index=itsi | head 1&#x27;, &#x27;disabled&#x27;: &#x27;0&#x27;}</div>
                 </td>
             </tr>
             <tr>
@@ -346,7 +363,7 @@ Common return values are documented `here <https://docs.ansible.com/ansible/late
                 </td>
                 <td>always</td>
                 <td>
-                            <div>Whether the correlation search was modified</div>
+                            <div>Whether the correlation search was modified.</div>
                     <br/>
                         <div style="font-size: smaller"><b>Sample:</b></div>
                         <div style="font-size: smaller; color: blue; word-wrap: break-word; word-break: break-all;">True</div>
@@ -355,7 +372,7 @@ Common return values are documented `here <https://docs.ansible.com/ansible/late
             <tr>
                 <td colspan="1">
                     <div class="ansibleOptionAnchor" id="return-"></div>
-                    <b>headers</b>
+                    <b>diff</b>
                     <a class="ansibleOptionLink" href="#return-" title="Permalink to this return value"></a>
                     <div style="font-size: small">
                       <span style="color: purple">dictionary</span>
@@ -363,44 +380,27 @@ Common return values are documented `here <https://docs.ansible.com/ansible/late
                 </td>
                 <td>always</td>
                 <td>
-                            <div>HTTP response headers from the ITSI API</div>
+                            <div>Fields that differ between before and after. Empty dict when unchanged.</div>
                     <br/>
                         <div style="font-size: smaller"><b>Sample:</b></div>
-                        <div style="font-size: smaller; color: blue; word-wrap: break-word; word-break: break-all;">{&#x27;Content-Type&#x27;: &#x27;application/json&#x27;, &#x27;Server&#x27;: &#x27;Splunkd&#x27;}</div>
+                        <div style="font-size: smaller; color: blue; word-wrap: break-word; word-break: break-all;">{&#x27;cron_schedule&#x27;: &#x27;*/5 * * * *&#x27;}</div>
                 </td>
             </tr>
             <tr>
                 <td colspan="1">
                     <div class="ansibleOptionAnchor" id="return-"></div>
-                    <b>operation</b>
+                    <b>response</b>
                     <a class="ansibleOptionLink" href="#return-" title="Permalink to this return value"></a>
                     <div style="font-size: small">
-                      <span style="color: purple">string</span>
+                      <span style="color: purple">dictionary</span>
                     </div>
                 </td>
                 <td>always</td>
                 <td>
-                            <div>The operation that was performed (create, update, delete, no_change)</div>
+                            <div>Raw HTTP API response body from the last API call.</div>
                     <br/>
                         <div style="font-size: smaller"><b>Sample:</b></div>
-                        <div style="font-size: smaller; color: blue; word-wrap: break-word; word-break: break-all;">create</div>
-                </td>
-            </tr>
-            <tr>
-                <td colspan="1">
-                    <div class="ansibleOptionAnchor" id="return-"></div>
-                    <b>status</b>
-                    <a class="ansibleOptionLink" href="#return-" title="Permalink to this return value"></a>
-                    <div style="font-size: small">
-                      <span style="color: purple">integer</span>
-                    </div>
-                </td>
-                <td>always</td>
-                <td>
-                            <div>HTTP status code from the ITSI API response</div>
-                    <br/>
-                        <div style="font-size: smaller"><b>Sample:</b></div>
-                        <div style="font-size: smaller; color: blue; word-wrap: break-word; word-break: break-all;">200</div>
+                        <div style="font-size: smaller; color: blue; word-wrap: break-word; word-break: break-all;">{&#x27;name&#x27;: &#x27;test-search&#x27;, &#x27;disabled&#x27;: &#x27;0&#x27;}</div>
                 </td>
             </tr>
     </table>

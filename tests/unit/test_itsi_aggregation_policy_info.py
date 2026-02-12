@@ -329,10 +329,8 @@ class TestQueryByPolicyId:
 
         result = _query_by_policy_id(ItsiRequest(mock_conn, _mock_module()), "test_policy_id", None)
 
-        assert result["status"] == 200
-        assert len(result["aggregation_policies"]) == 1
-        assert result["aggregation_policies"][0]["_key"] == "test_policy_id"
-        assert "headers" in result
+        assert result["_key"] == "test_policy_id"
+        assert result["title"] == "Test Policy"
 
     def test_query_not_found(self):
         """Test query when policy not found."""
@@ -340,8 +338,7 @@ class TestQueryByPolicyId:
 
         result = _query_by_policy_id(ItsiRequest(mock_conn, _mock_module()), "nonexistent", None)
 
-        assert result["status"] == 0
-        assert result["aggregation_policies"] == []
+        assert result == {}
 
     def test_query_with_fields(self):
         """Test query with specific fields."""
@@ -369,10 +366,8 @@ class TestQueryByTitle:
 
         result = _query_by_title(ItsiRequest(mock_conn, _mock_module()), "Test Policy", None)
 
-        assert result["status"] == 200
         assert len(result["aggregation_policies"]) == 1
         assert result["aggregation_policies"][0]["_key"] == "test_policy_id"
-        assert "headers" in result
 
     def test_query_multiple_matches(self):
         """Test query with multiple matching policies."""
@@ -380,7 +375,6 @@ class TestQueryByTitle:
 
         result = _query_by_title(ItsiRequest(mock_conn, _mock_module()), "Test Policy", None)
 
-        assert result["status"] == 200
         assert len(result["aggregation_policies"]) == 2
 
     def test_query_no_match(self):
@@ -389,7 +383,6 @@ class TestQueryByTitle:
 
         result = _query_by_title(ItsiRequest(mock_conn, _mock_module()), "Test Policy", None)
 
-        assert result["status"] == 200
         assert len(result["aggregation_policies"]) == 0
 
     def test_query_with_fields(self):
@@ -418,9 +411,7 @@ class TestListAllPolicies:
 
         result = _list_all_policies(ItsiRequest(mock_conn, _mock_module()), None, None, None)
 
-        assert result["status"] == 200
         assert len(result["aggregation_policies"]) == 2
-        assert "headers" in result
 
     def test_list_with_fields(self):
         """Test listing with specific fields."""
@@ -455,7 +446,6 @@ class TestListAllPolicies:
 
         result = _list_all_policies(ItsiRequest(mock_conn, _mock_module()), None, None, None)
 
-        assert result["status"] == 200
         assert result["aggregation_policies"] == []
 
     def test_list_non_dict_response(self):
@@ -496,9 +486,7 @@ class TestMain:
         mock_module.exit_json.assert_called_once()
         call_kwargs = mock_module.exit_json.call_args[1]
         assert call_kwargs["changed"] is False
-        assert call_kwargs["status"] == 200
-        assert len(call_kwargs["aggregation_policies"]) == 1
-        assert call_kwargs["aggregation_policies"][0]["_key"] == "test_policy_id"
+        assert call_kwargs["response"]["_key"] == "test_policy_id"
 
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_aggregation_policy_info.Connection")
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_aggregation_policy_info.AnsibleModule")
@@ -527,7 +515,7 @@ class TestMain:
         mock_module.exit_json.assert_called_once()
         call_kwargs = mock_module.exit_json.call_args[1]
         assert call_kwargs["changed"] is False
-        assert call_kwargs["aggregation_policies"] == []
+        assert call_kwargs["response"] == {}
 
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_aggregation_policy_info.Connection")
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_aggregation_policy_info.AnsibleModule")
@@ -556,8 +544,8 @@ class TestMain:
         mock_module.exit_json.assert_called_once()
         call_kwargs = mock_module.exit_json.call_args[1]
         assert call_kwargs["changed"] is False
-        assert len(call_kwargs["aggregation_policies"]) == 1
-        assert call_kwargs["aggregation_policies"][0]["_key"] == "test_policy_id"
+        assert len(call_kwargs["response"]["aggregation_policies"]) == 1
+        assert call_kwargs["response"]["aggregation_policies"][0]["_key"] == "test_policy_id"
 
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_aggregation_policy_info.Connection")
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_aggregation_policy_info.AnsibleModule")
@@ -585,7 +573,7 @@ class TestMain:
 
         mock_module.exit_json.assert_called_once()
         call_kwargs = mock_module.exit_json.call_args[1]
-        assert len(call_kwargs["aggregation_policies"]) == 2
+        assert len(call_kwargs["response"]["aggregation_policies"]) == 2
 
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_aggregation_policy_info.Connection")
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_aggregation_policy_info.AnsibleModule")
@@ -613,7 +601,7 @@ class TestMain:
 
         mock_module.exit_json.assert_called_once()
         call_kwargs = mock_module.exit_json.call_args[1]
-        assert len(call_kwargs["aggregation_policies"]) == 0
+        assert len(call_kwargs["response"]["aggregation_policies"]) == 0
 
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_aggregation_policy_info.Connection")
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_aggregation_policy_info.AnsibleModule")
@@ -645,7 +633,7 @@ class TestMain:
         mock_module.exit_json.assert_called_once()
         call_kwargs = mock_module.exit_json.call_args[1]
         assert call_kwargs["changed"] is False
-        assert len(call_kwargs["aggregation_policies"]) == 3
+        assert len(call_kwargs["response"]["aggregation_policies"]) == 3
 
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_aggregation_policy_info.Connection")
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_aggregation_policy_info.AnsibleModule")

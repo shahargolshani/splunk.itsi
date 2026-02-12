@@ -178,7 +178,7 @@ class TestMain:
 
         mock_module.exit_json.assert_called_once()
         call_kwargs = mock_module.exit_json.call_args[1]
-        assert call_kwargs["service"]["title"] == "api-gateway"
+        assert call_kwargs["response"]["title"] == "api-gateway"
 
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_service_info.Connection")
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_service_info.AnsibleModule")
@@ -211,8 +211,8 @@ class TestMain:
             main()
 
         call_kwargs = mock_module.exit_json.call_args[1]
-        # 404 returns defaults — no service set, raw stays as default
-        assert "service" not in call_kwargs
+        # 404 returns defaults — response stays as empty dict
+        assert call_kwargs["response"] == {}
         assert call_kwargs["changed"] is False
 
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_service_info.Connection")
@@ -242,7 +242,7 @@ class TestMain:
             main()
 
         call_kwargs = mock_module.exit_json.call_args[1]
-        assert len(call_kwargs["items"]) == 2
+        assert len(call_kwargs["response"]) == 2
 
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_service_info.Connection")
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_service_info.AnsibleModule")
@@ -541,8 +541,8 @@ class TestMain:
             main()
 
         call_kwargs = mock_module.exit_json.call_args[1]
-        assert len(call_kwargs["items"]) == 2
-        assert call_kwargs["paging"]["size"] == 2
+        assert len(call_kwargs["response"]["items"]) == 2
+        assert call_kwargs["response"]["size"] == 2
 
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_service_info.Connection")
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_service_info.AnsibleModule")
@@ -701,8 +701,8 @@ class TestMain:
             main()
 
         call_kwargs = mock_module.exit_json.call_args[1]
-        # Should still return items (empty since response wasn't a list)
-        assert "items" in call_kwargs
+        # Response is the raw body regardless of shape
+        assert call_kwargs["response"] == {"unexpected": "shape"}
 
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_service_info.Connection")
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_service_info.AnsibleModule")

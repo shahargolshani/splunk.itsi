@@ -156,18 +156,17 @@ EXAMPLES = r"""
       items: []
     state: present
   register: create_result
-# Note: create_result.aggregation_policies[0]._key contains the generated policy_id
+# create_result.response._key contains the generated policy_id
 
 # Update existing aggregation policy (policy_id required, title optional)
 - name: Update aggregation policy settings
   splunk.itsi.itsi_aggregation_policy:
-    policy_id: "{{ create_result.aggregation_policies[0]._key }}"
+    policy_id: "{{ create_result.response._key }}"
     group_severity: "high"
     disabled: false
     state: present
   register: update_result
-# Only updates if group_severity or disabled actually changed
-# Title not required for updates - policy is identified by policy_id
+# update_result.diff shows fields that changed
 
 # Update using additional fields
 - name: Update aggregation policy with custom fields
@@ -181,64 +180,53 @@ EXAMPLES = r"""
 # Delete aggregation policy (policy_id required)
 - name: Remove aggregation policy
   splunk.itsi.itsi_aggregation_policy:
-    policy_id: "{{ create_result.aggregation_policies[0]._key }}"
+    policy_id: "{{ create_result.response._key }}"
     state: absent
   register: delete_result
 
-# Error handling example
-- name: Create aggregation policy with error handling
+# Create with error handling
+- name: Create aggregation policy
   splunk.itsi.itsi_aggregation_policy:
     title: "Critical Service Alert Policy"
     description: "Groups critical service alerts"
     group_severity: "critical"
     state: present
   register: result
-  failed_when: result.status >= 400 and result.status != 409
 """
 
 RETURN = r"""
 changed:
-  description: Whether the aggregation policy was modified
+  description: Whether the aggregation policy was modified.
   type: bool
   returned: always
   sample: true
-status:
-  description: HTTP status code from the API response
-  type: int
-  returned: always
-  sample: 200
-headers:
-  description: HTTP response headers from the API
+before:
+  description: Policy state before the operation. Empty dict on create or when already absent.
   type: dict
   returned: always
-  sample: {"content-type": "application/json"}
-body:
-  description: Raw response body from the API
-  type: str
-  returned: always
-  sample: '{"_key": "policy123"}'
-operation:
-  description: The operation performed (create, update, delete, no_change, error)
-  type: str
-  returned: always
-  sample: "create"
-aggregation_policies:
-  description: List containing the aggregation policy data after the operation
-  type: list
-  elements: dict
-  returned: when operation succeeded
   sample:
-    - title: "Default Policy"
-      description: "Default aggregation policy"
-      disabled: 0
-      _key: "itsi_default_policy"
+    group_severity: "medium"
+    disabled: 0
+after:
+  description: Policy state after the operation. Empty dict on delete.
+  type: dict
+  returned: always
+  sample:
+    group_severity: "high"
+    disabled: 0
 diff:
-  description: Differences between current and desired state (update operations)
+  description: Fields that differ between before and after. Empty dict when unchanged.
   type: dict
-  returned: when operation=update and changes detected
+  returned: always
   sample:
-    group_severity: ["medium", "high"]
-    disabled: ["1", "0"]
+    group_severity: "high"
+response:
+  description: Raw HTTP API response body from the last API call.
+  type: dict
+  returned: always
+  sample:
+    _key: "policy123"
+    title: "Default Policy"
 """
 
 # Standard library imports
@@ -375,18 +363,6 @@ def delete_aggregation_policy(client, policy_id):
 
 
 # ------------------------------------------------------------------
-# Result helper
-# ------------------------------------------------------------------
-
-
-def _result(changed, status, headers, body, **extra):
-    """Build a unified result dict."""
-    r = {"changed": changed, "status": status, "headers": headers, "body": body}
-    r.update(extra)
-    return r
-
-
-# ------------------------------------------------------------------
 # Business logic
 # ------------------------------------------------------------------
 
@@ -429,46 +405,59 @@ def _handle_state_present(module, client, result):
 
     desired_data = _build_desired_data(module.params)
 
-    if module.check_mode:
-        exists = get_aggregation_policy_by_id(client, policy_id) is not None if policy_id else False
-        result.update(
-            _result(
-                True,
-                0,
-                {},
-                desired_data,
-                check_mode=True,
-                operation="update" if exists else "create",
-            ),
-        )
-        return
-
-    # No policy_id → always create
+    # --- Create (no policy_id) ---
     if not policy_id:
-        _status, _hdr, body = create_aggregation_policy(client, desired_data)
-        result.update(_result(True, _status, _hdr, body, aggregation_policies=[body]))
+        result["before"] = {}
+        result["after"] = desired_data
+        result["diff"] = desired_data
+        result["changed"] = True
+        if not module.check_mode:
+            _status, _hdr, body = create_aggregation_policy(client, desired_data)
+            result["response"] = body
+            # Create response may only include an identifier. Re-fetch to return
+            # the full created policy object in `after`.
+            created_policy_id = body.get("_key") if isinstance(body, dict) else None
+            if created_policy_id:
+                get_created = get_aggregation_policy_by_id(client, created_policy_id)
+                if get_created is not None:
+                    _c_status, _c_hdr, created_obj = get_created
+                    result["after"] = created_obj
+                else:
+                    result["after"] = body
+            else:
+                result["after"] = body
         return
 
-    # policy_id provided → lookup
+    # --- Update (policy_id provided) ---
     get_result = get_aggregation_policy_by_id(client, policy_id)
     if get_result is None:
         module.fail_json(msg=f"Policy with ID '{policy_id}' not found")
         return
 
-    cur_status, cur_hdr, current_data = get_result
+    _cur_status, _cur_hdr, current_data = get_result
+    result["before"] = current_data
 
     # Idempotency check
     current_canon = _canonicalize_policy(current_data)
     desired_canon = _canonicalize_policy(desired_data)
-    diff = _diff_canonical(desired_canon, current_canon)
+    diff_check = _diff_canonical(desired_canon, current_canon)
 
-    if not diff:
-        result.update(_result(False, cur_status, cur_hdr, current_data, aggregation_policies=[current_data]))
+    if not diff_check:
+        result["after"] = current_data
         return
 
-    # Update needed
-    _status, _hdr, body = update_aggregation_policy(client, policy_id, desired_canon, current_data)
-    result.update(_result(True, _status, _hdr, body, aggregation_policies=[body], diff=diff))
+    # Build a simple diff: {field: new_value}
+    diff = {k: v[1] for k, v in diff_check.items()}
+    after = dict(current_data)
+    after.update(desired_canon)
+
+    result["changed"] = True
+    result["diff"] = diff
+    result["after"] = after
+
+    if not module.check_mode:
+        _status, _hdr, body = update_aggregation_policy(client, policy_id, desired_canon, current_data)
+        result["response"] = body
 
 
 def _handle_state_absent(module, client, result):
@@ -478,22 +467,22 @@ def _handle_state_absent(module, client, result):
     if not policy_id:
         module.fail_json(msg="'policy_id' is required for absent state (titles are not unique)")
 
-    exists = get_aggregation_policy_by_id(client, policy_id) is not None
+    get_result = get_aggregation_policy_by_id(client, policy_id)
 
-    if not exists:
-        result.update(_result(False, 0, {}, {}, msg="Aggregation policy already absent"))
+    if get_result is None:
+        # Already absent
         return
 
-    if module.check_mode:
-        result.update(_result(True, 0, {}, {}, check_mode=True))
-        return
+    _cur_status, _cur_hdr, current_data = get_result
+    result["changed"] = True
+    result["before"] = current_data
+    result["diff"] = current_data
 
-    del_result = delete_aggregation_policy(client, policy_id)
-    if del_result is None:
-        result.update(_result(True, 0, {}, {}))
-    else:
-        _status, _hdr, body = del_result
-        result.update(_result(True, _status, _hdr, body))
+    if not module.check_mode:
+        del_result = delete_aggregation_policy(client, policy_id)
+        if del_result is not None:
+            _status, _hdr, body = del_result
+            result["response"] = body
 
 
 def main():
@@ -526,7 +515,7 @@ def main():
         module.fail_json(msg="Use ansible_connection=httpapi and ansible_network_os=splunk.itsi.itsi_api_client")
 
     client = ItsiRequest(Connection(module._socket_path), module)
-    result = {"changed": False, "status": 0, "headers": {}, "body": {}}
+    result = {"changed": False, "before": {}, "after": {}, "diff": {}, "response": {}}
 
     state = module.params["state"]
     if state == "present":

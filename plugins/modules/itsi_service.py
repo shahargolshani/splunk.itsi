@@ -117,27 +117,40 @@ EXAMPLES = r"""
 """
 
 RETURN = r"""
-service:
-  description: Service document after the operation when available.
-  type: dict
-  returned: when not bulk
-changed_fields:
-  description: Keys that changed during update.
-  type: list
-  elements: str
-  returned: when state=present and an update occurred
-diff:
-  description: Structured before/after for managed fields.
-  type: dict
-  returned: when check_mode is true or an update/delete occurs
-raw:
-  description: Raw JSON from Splunk for the last call.
-  type: raw
-  returned: always
 changed:
   description: Whether any change was made.
   type: bool
   returned: always
+before:
+  description: Service state before the operation. Empty dict on create or when already absent.
+  type: dict
+  returned: always
+  sample:
+    title: "api-gateway"
+    enabled: 1
+    description: "Frontend + API"
+after:
+  description: Service state after the operation. Empty dict on delete.
+  type: dict
+  returned: always
+  sample:
+    title: "api-gateway"
+    enabled: 0
+    description: "Disabled for maintenance"
+diff:
+  description: Fields that differ between before and after. Empty dict when unchanged.
+  type: dict
+  returned: always
+  sample:
+    enabled: 0
+    description: "Disabled for maintenance"
+response:
+  description: Raw HTTP API response body from the last API call.
+  type: dict
+  returned: always
+  sample:
+    _key: "a2961217-9728-4e9f-b67b-15bf4a40ad7c"
+    title: "api-gateway"
 """
 
 import json
@@ -680,21 +693,14 @@ def _handle_absent(
     if not current:
         module.exit_json(**result)
 
-    before_diff = {k: current.get(k) for k in DIFF_FIELDS}
-
-    if module.check_mode:
-        result["changed"] = True
-        result["diff"]["before"] = before_diff
-        result["diff"]["after"] = {}
-        module.exit_json(**result)
-
-    body = _delete(client, current.get("_key", key))
-    result["raw"] = body
     result["changed"] = True
-    result["service"] = None
-    result["changed_fields"] = ["_deleted"]
-    result["diff"]["before"] = before_diff
-    result["diff"]["after"] = {}
+    result["before"] = current
+    result["diff"] = current
+
+    if not module.check_mode:
+        body = _delete(client, current.get("_key", key))
+        result["response"] = body or {}
+
     module.exit_json(**result)
 
 
@@ -729,21 +735,18 @@ def _handle_create(
             result=result,
         )
 
-    if module.check_mode:
-        result["changed"] = True
-        result["diff"]["before"] = {}
-        result["diff"]["after"] = {k: desired.get(k) for k in DIFF_FIELDS}
-        module.exit_json(**result)
-
-    body = _create(client, desired)
-    result["raw"] = body
-
-    created = body if isinstance(body, dict) else {}
-    result["service"] = {"_key": created.get("_key"), **desired} if created.get("_key") else desired
     result["changed"] = True
-    result["changed_fields"] = list(desired.keys())
-    result["diff"]["before"] = {}
-    result["diff"]["after"] = {k: desired.get(k) for k in DIFF_FIELDS}
+    result["before"] = {}
+    result["diff"] = desired
+    result["after"] = desired
+
+    if not module.check_mode:
+        body = _create(client, desired)
+        result["response"] = body or {}
+        created = body if isinstance(body, dict) else {}
+        if created.get("_key"):
+            result["after"] = {"_key": created["_key"], **desired}
+
     module.exit_json(**result)
 
 
@@ -771,35 +774,27 @@ def _handle_update(
 
     patch, changed_fields = _compute_patch(current, desired)
 
+    result["before"] = current
+
     if not patch:
-        result["service"] = current
+        result["after"] = current
         module.exit_json(**result)
 
     # ITSI requires title in UPDATE requests even if unchanged
     if "title" not in patch and current.get("title"):
         patch["title"] = current["title"]
 
-    before_diff = {k: current.get(k) for k in DIFF_FIELDS}
-
-    if module.check_mode:
-        after = dict(current)
-        after.update(patch)
-        result["changed"] = True
-        result["changed_fields"] = changed_fields
-        result["diff"]["before"] = before_diff
-        result["diff"]["after"] = {k: after.get(k) for k in DIFF_FIELDS}
-        module.exit_json(**result)
-
-    body = _update(client, current.get("_key", key), patch, current_doc=current)
-    result["raw"] = body
-
-    result["changed"] = True
-    result["changed_fields"] = changed_fields
     after = dict(current)
     after.update(patch)
-    result["service"] = after
-    result["diff"]["before"] = before_diff
-    result["diff"]["after"] = {k: after.get(k) for k in DIFF_FIELDS}
+
+    result["changed"] = True
+    result["diff"] = patch
+    result["after"] = after
+
+    if not module.check_mode:
+        body = _update(client, current.get("_key", key), patch, current_doc=current)
+        result["response"] = body or {}
+
     module.exit_json(**result)
 
 
@@ -833,10 +828,10 @@ def main() -> None:
 
     result: Dict[str, Any] = {
         "changed": False,
-        "service": None,
-        "raw": {},
-        "changed_fields": [],
-        "diff": {"before": {}, "after": {}},
+        "before": {},
+        "after": {},
+        "diff": {},
+        "response": {},
     }
 
     state = params["state"]

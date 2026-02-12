@@ -846,7 +846,7 @@ class TestMain:
         mock_module.exit_json.assert_called_once()
         call_kwargs = mock_module.exit_json.call_args[1]
         assert call_kwargs["changed"] is True
-        assert call_kwargs["service"]["_key"] == "new-uuid"
+        assert call_kwargs["after"]["_key"] == "new-uuid"
 
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_service.Connection")
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_service.AnsibleModule")
@@ -879,7 +879,7 @@ class TestMain:
 
         call_kwargs = mock_module.exit_json.call_args[1]
         assert call_kwargs["changed"] is True
-        assert call_kwargs["diff"]["before"] == {}
+        assert call_kwargs["before"] == {}
 
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_service.Connection")
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_service.AnsibleModule")
@@ -920,8 +920,8 @@ class TestMain:
 
         call_kwargs = mock_module.exit_json.call_args[1]
         assert call_kwargs["changed"] is True
-        assert "enabled" in call_kwargs["changed_fields"]
-        assert "description" in call_kwargs["changed_fields"]
+        assert "enabled" in call_kwargs["diff"]
+        assert "description" in call_kwargs["diff"]
 
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_service.Connection")
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_service.AnsibleModule")
@@ -994,7 +994,7 @@ class TestMain:
 
         call_kwargs = mock_module.exit_json.call_args[1]
         assert call_kwargs["changed"] is True
-        assert "enabled" in call_kwargs["changed_fields"]
+        assert "enabled" in call_kwargs["diff"]
 
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_service.Connection")
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_service.AnsibleModule")
@@ -1032,7 +1032,7 @@ class TestMain:
 
         call_kwargs = mock_module.exit_json.call_args[1]
         assert call_kwargs["changed"] is True
-        assert "_deleted" in call_kwargs["changed_fields"]
+        assert call_kwargs["before"]  # delete: before contains the deleted service
 
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_service.Connection")
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_service.AnsibleModule")
@@ -1101,7 +1101,7 @@ class TestMain:
 
         call_kwargs = mock_module.exit_json.call_args[1]
         assert call_kwargs["changed"] is True
-        assert call_kwargs["diff"]["after"] == {}
+        assert call_kwargs["after"] == {}
 
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_service.Connection")
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_service.AnsibleModule")
@@ -1329,7 +1329,7 @@ class TestMain:
 
         call_kwargs = mock_module.exit_json.call_args[1]
         assert call_kwargs["changed"] is True
-        assert "service_tags" in call_kwargs["changed_fields"]
+        assert "service_tags" in call_kwargs["diff"]
 
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_service.Connection")
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_service.AnsibleModule")
@@ -1375,7 +1375,7 @@ class TestMain:
 
         call_kwargs = mock_module.exit_json.call_args[1]
         assert call_kwargs["changed"] is True
-        assert "entity_rules" in call_kwargs["changed_fields"]
+        assert "entity_rules" in call_kwargs["diff"]
 
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_service.Connection")
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_service.AnsibleModule")

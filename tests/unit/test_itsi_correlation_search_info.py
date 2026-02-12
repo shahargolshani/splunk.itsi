@@ -293,8 +293,7 @@ class TestMain:
 
         mock_module.exit_json.assert_called_once()
         call_kwargs = mock_module.exit_json.call_args[1]
-        assert call_kwargs["status"] == 200
-        assert "correlation_search" in call_kwargs
+        assert call_kwargs["response"] != {}
 
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_correlation_search_info.Connection")
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_correlation_search_info.AnsibleModule")
@@ -321,7 +320,7 @@ class TestMain:
 
         mock_module.exit_json.assert_called_once()
         call_kwargs = mock_module.exit_json.call_args[1]
-        assert call_kwargs["status"] == 200
+        assert call_kwargs["response"] != {}
 
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_correlation_search_info.Connection")
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_correlation_search_info.AnsibleModule")
@@ -348,7 +347,7 @@ class TestMain:
 
         mock_module.exit_json.assert_called_once()
         call_kwargs = mock_module.exit_json.call_args[1]
-        assert "correlation_searches" in call_kwargs
+        assert "correlation_searches" in call_kwargs["response"]
 
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_correlation_search_info.Connection")
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_correlation_search_info.AnsibleModule")
@@ -375,7 +374,7 @@ class TestMain:
 
         mock_module.exit_json.assert_called_once()
         call_kwargs = mock_module.exit_json.call_args[1]
-        assert call_kwargs["correlation_search"] is None
+        assert call_kwargs["response"] == {}
 
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_correlation_search_info.Connection")
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_correlation_search_info.AnsibleModule")

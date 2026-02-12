@@ -27,12 +27,12 @@
       check_mode: true
       register: check_mode_create_result
 
-    - name: "Step 1 - Assert check mode create returns changed=true and operation=create"
+    - name: "Step 1 - Assert check mode create returns changed=true"
       ansible.builtin.assert:
         that:
           - check_mode_create_result.changed == true
-          - check_mode_create_result.operation == 'create'
-        fail_msg: "Check mode create should report changed=true and operation=create"
+          - check_mode_create_result.before == {}
+        fail_msg: "Check mode create should report changed=true with empty before"
         success_msg: "Check mode create correctly reports would create"
 
     - name: "Step 1 - Verify aggregation policy does NOT exist after check mode (using info module)"
@@ -43,7 +43,7 @@
     - name: "Step 1 - Assert aggregation policy was not actually created in check mode"
       ansible.builtin.assert:
         that:
-          - verify_not_created.aggregation_policies | length == 0
+          - verify_not_created.response.aggregation_policies | length == 0
         fail_msg: "Aggregation policy should NOT exist after check mode"
         success_msg: "Verified: Check mode did not create the aggregation policy"
 
@@ -69,15 +69,14 @@
       ansible.builtin.assert:
         that:
           - create_result.changed == true
-          - create_result.aggregation_policies is defined
-          - create_result.aggregation_policies | length == 1
-          - create_result.aggregation_policies[0]._key is defined
+          - create_result.response is defined
+          - create_result.response._key is defined
         fail_msg: "Create operation should succeed with changed=true"
         success_msg: "Create operation succeeded"
 
     - name: "Step 2 - Store policy_id for subsequent tests"
       ansible.builtin.set_fact:
-        test_policy_id: "{{ create_result.aggregation_policies[0]._key }}"
+        test_policy_id: "{{ create_result.response._key }}"
 
     - name: "Step 2 - Verify created policy with info module"
       splunk.itsi.itsi_aggregation_policy_info:
@@ -87,9 +86,9 @@
     - name: "Step 2 - Assert created policy exists and has correct values"
       ansible.builtin.assert:
         that:
-          - verify_create.aggregation_policies is defined
-          - verify_create.aggregation_policies | length == 1
-          - verify_create.aggregation_policies[0].title == test_aggregation_policy_title
+          - verify_create.response is defined
+          - verify_create.response._key is defined
+          - verify_create.response.title == test_aggregation_policy_title
         fail_msg: "Created policy should exist and have correct title"
         success_msg: "Verified: Policy created with correct values"
 
@@ -135,12 +134,12 @@
       check_mode: true
       register: check_mode_update_result
 
-    - name: "Step 5 - Assert check mode update returns changed=true and operation=update"
+    - name: "Step 5 - Assert check mode update returns changed=true with diff"
       ansible.builtin.assert:
         that:
           - check_mode_update_result.changed == true
-          - check_mode_update_result.operation == 'update'
-        fail_msg: "Check mode update should report changed=true and operation=update"
+          - check_mode_update_result.diff | length > 0
+        fail_msg: "Check mode update should report changed=true with non-empty diff"
         success_msg: "Check mode update correctly reports would update"
 
     - name: "Step 5 - Verify policy was NOT updated after check mode (using info module)"
@@ -151,7 +150,7 @@
     - name: "Step 5 - Assert policy still has original values after check mode"
       ansible.builtin.assert:
         that:
-          - verify_not_updated.aggregation_policies[0].description == test_aggregation_policy.description
+          - verify_not_updated.response.description == test_aggregation_policy.description
         fail_msg: "Policy should NOT be updated after check mode"
         success_msg: "Verified: Check mode did not update the policy"
 
@@ -189,14 +188,13 @@
     - name: "Step 6 - Assert updated values are correct"
       ansible.builtin.assert:
         that:
-          - info_after_update.aggregation_policies | length == 1
-          - info_after_update.aggregation_policies[0].description == test_aggregation_policy_updated.description
+          - info_after_update.response.description == test_aggregation_policy_updated.description
         fail_msg: "Info module should return updated aggregation policy with new description"
         success_msg: "Verified: Aggregation policy was updated successfully"
 
     - name: "Step 6 - Debug updated aggregation policy"
       ansible.builtin.debug:
-        var: info_after_update.aggregation_policies
+        var: info_after_update.response
         verbosity: 1
 
     # =========================================================================
@@ -231,8 +229,7 @@
       ansible.builtin.assert:
         that:
           - info_by_id.changed == false
-          - info_by_id.aggregation_policies | length == 1
-          - info_by_id.aggregation_policies[0]._key == test_policy_id
+          - info_by_id.response._key == test_policy_id
         fail_msg: "Info module query by policy_id should succeed"
         success_msg: "Info module query by policy_id succeeded"
 
@@ -245,10 +242,10 @@
       ansible.builtin.assert:
         that:
           - info_by_title.changed == false
-          - info_by_title.aggregation_policies is defined
-          - info_by_title.aggregation_policies | length >= 1
+          - info_by_title.response.aggregation_policies is defined
+          - info_by_title.response.aggregation_policies | length >= 1
         fail_msg: "Info module query by title should succeed and return at least one policy"
-        success_msg: "Info module query by title succeeded - found {{ info_by_title.aggregation_policies | length }} policies"
+        success_msg: "Info module query by title succeeded - found {{ info_by_title.response.aggregation_policies | length }} policies"
 
     - name: "Step 8c - List all aggregation policies (using info module)"
       splunk.itsi.itsi_aggregation_policy_info:
@@ -258,9 +255,9 @@
       ansible.builtin.assert:
         that:
           - info_list_all.changed == false
-          - info_list_all.aggregation_policies is defined
+          - info_list_all.response.aggregation_policies is defined
         fail_msg: "Info module list all should succeed"
-        success_msg: "Info module list all succeeded - found {{ info_list_all.aggregation_policies | length }} policies"
+        success_msg: "Info module list all succeeded - found {{ info_list_all.response.aggregation_policies | length }} policies"
 
     - name: "Step 8d - List aggregation policies with limit (using info module)"
       splunk.itsi.itsi_aggregation_policy_info:
@@ -271,10 +268,10 @@
       ansible.builtin.assert:
         that:
           - info_limited.changed == false
-          - info_limited.aggregation_policies is defined
-          - info_limited.aggregation_policies | length <= 3
+          - info_limited.response.aggregation_policies is defined
+          - info_limited.response.aggregation_policies | length <= 3
         fail_msg: "Info module limited query should return at most 3 policies"
-        success_msg: "Info module limited query succeeded - returned {{ info_limited.aggregation_policies | length }} policies"
+        success_msg: "Info module limited query succeeded - returned {{ info_limited.response.aggregation_policies | length }} policies"
 
     - name: "Step 8e - Get policy with specific fields only (using info module)"
       splunk.itsi.itsi_aggregation_policy_info:
@@ -286,7 +283,7 @@
       ansible.builtin.assert:
         that:
           - info_with_fields.changed == false
-          - info_with_fields.aggregation_policies | length == 1
+          - info_with_fields.response._key is defined
         fail_msg: "Info module with fields projection should succeed"
         success_msg: "Info module with fields projection succeeded"
 
@@ -304,8 +301,8 @@
       ansible.builtin.assert:
         that:
           - check_mode_delete_result.changed == true
-          - check_mode_delete_result.check_mode == true
-        fail_msg: "Check mode delete should report changed=true"
+          - check_mode_delete_result.before | length > 0
+        fail_msg: "Check mode delete should report changed=true with non-empty before"
         success_msg: "Check mode delete correctly reports would delete"
 
     - name: "Step 9 - Verify aggregation policy still exists after check mode delete (using info module)"
@@ -316,7 +313,7 @@
     - name: "Step 9 - Assert aggregation policy was not deleted in check mode"
       ansible.builtin.assert:
         that:
-          - verify_still_exists.aggregation_policies | length == 1
+          - verify_still_exists.response._key is defined
         fail_msg: "Aggregation policy should still exist after check mode delete"
         success_msg: "Verified: Check mode did not delete the aggregation policy"
 
@@ -364,7 +361,7 @@
       ansible.builtin.assert:
         that:
           - info_after_delete.changed == false
-          - info_after_delete.aggregation_policies | length == 0
+          - info_after_delete.response | length == 0
         fail_msg: "Aggregation policy should not exist after deletion"
         success_msg: "Verified: Aggregation policy no longer exists after deletion"
 
@@ -377,7 +374,7 @@
       ansible.builtin.assert:
         that:
           - info_by_title_after_delete.changed == false
-          - info_by_title_after_delete.aggregation_policies | length == 0
+          - info_by_title_after_delete.response.aggregation_policies | length == 0
         fail_msg: "No policies should exist with test title after deletion"
         success_msg: "Verified: No policies found with test title after deletion"
 
@@ -390,7 +387,7 @@
       ansible.builtin.assert:
         that:
           - info_nonexistent.changed == false
-          - info_nonexistent.aggregation_policies | length == 0
+          - info_nonexistent.response | length == 0
         fail_msg: "Non-existent query should be handled gracefully"
         success_msg: "Non-existent query handled gracefully"
 

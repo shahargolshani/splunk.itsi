@@ -243,7 +243,7 @@ Common return values are documented `here <https://docs.ansible.com/ansible/late
             <tr>
                 <td colspan="1">
                     <div class="ansibleOptionAnchor" id="return-"></div>
-                    <b>raw</b>
+                    <b>response</b>
                     <a class="ansibleOptionLink" href="#return-" title="Permalink to this return value"></a>
                     <div style="font-size: small">
                       <span style="color: purple">raw</span>
@@ -251,38 +251,7 @@ Common return values are documented `here <https://docs.ansible.com/ansible/late
                 </td>
                 <td>always</td>
                 <td>
-                            <div>Raw body parsed from the server response for the last call.</div>
-                    <br/>
-                </td>
-            </tr>
-            <tr>
-                <td colspan="1">
-                    <div class="ansibleOptionAnchor" id="return-"></div>
-                    <b>service</b>
-                    <a class="ansibleOptionLink" href="#return-" title="Permalink to this return value"></a>
-                    <div style="font-size: small">
-                      <span style="color: purple">dictionary</span>
-                    </div>
-                </td>
-                <td>when a single result is found</td>
-                <td>
-                            <div>First item from services when a single result is expected.</div>
-                    <br/>
-                </td>
-            </tr>
-            <tr>
-                <td colspan="1">
-                    <div class="ansibleOptionAnchor" id="return-"></div>
-                    <b>services</b>
-                    <a class="ansibleOptionLink" href="#return-" title="Permalink to this return value"></a>
-                    <div style="font-size: small">
-                      <span style="color: purple">list</span>
-                       / <span style="color: purple">elements=dictionary</span>
-                    </div>
-                </td>
-                <td>always</td>
-                <td>
-                            <div>List of service objects returned by the ITSI API.</div>
+                            <div>The API response body. For service_id queries this is a single service dict. For list queries this is the raw list or paging envelope returned by the ITSI API. Empty dict when the requested resource is not found.</div>
                     <br/>
                 </td>
             </tr>

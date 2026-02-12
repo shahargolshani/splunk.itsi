@@ -34,7 +34,7 @@
     - name: Assert service was not created in check mode
       ansible.builtin.assert:
         that:
-          - verify_not_created_template['items'] | length == 0
+          - verify_not_created_template.response | length == 0
 
     # CREATE
     - name: Create service with template
@@ -54,8 +54,8 @@
     - name: Assert service was created
       ansible.builtin.assert:
         that:
-          - verify_created_template['items'] | length > 0
-          - verify_created_template['items'][0].title == test_service_with_template_name
+          - verify_created_template.response | length > 0
+          - verify_created_template.response[0].title == test_service_with_template_name
 
     # Idempotency (base_service_template_id is ignored when service exists)
     - name: Run present again (idempotency)
@@ -90,8 +90,8 @@
     - name: Assert updated values are correct
       ansible.builtin.assert:
         that:
-          - info_after_update_template['items'] | length > 0
-          - info_after_update_template['items'][0].description == test_service_with_template_updated.description
+          - info_after_update_template.response | length > 0
+          - info_after_update_template.response[0].description == test_service_with_template_updated.description
 
     # Update idempotency
     - name: Run update again (idempotency)
@@ -124,7 +124,7 @@
     - name: Assert service was not deleted in check mode
       ansible.builtin.assert:
         that:
-          - verify_still_exists_template['items'] | length > 0
+          - verify_still_exists_template.response | length > 0
 
     # DELETE
     - name: Delete service with template
@@ -156,7 +156,7 @@
     - name: Assert service was deleted
       ansible.builtin.assert:
         that:
-          - verify_deleted_template['items'] | length == 0
+          - verify_deleted_template.response | length == 0
 
     # Service WITHOUT Template #
     # Check mode CREATE
@@ -185,7 +185,7 @@
     - name: Assert service was not created in check mode
       ansible.builtin.assert:
         that:
-          - verify_not_created_no_template['items'] | length == 0
+          - verify_not_created_no_template.response | length == 0
 
     # CREATE
     - name: Create service without template
@@ -205,8 +205,8 @@
     - name: Assert service was created
       ansible.builtin.assert:
         that:
-          - verify_created_no_template['items'] | length > 0
-          - verify_created_no_template['items'][0].title == test_service_no_template_name
+          - verify_created_no_template.response | length > 0
+          - verify_created_no_template.response[0].title == test_service_no_template_name
 
     # Idempotency
     - name: Run present again (idempotency)
@@ -242,8 +242,8 @@
     - name: Assert updated values are correct
       ansible.builtin.assert:
         that:
-          - info_after_update_no_template['items'] | length > 0
-          - info_after_update_no_template['items'][0].description == test_service_no_template_updated.description
+          - info_after_update_no_template.response | length > 0
+          - info_after_update_no_template.response[0].description == test_service_no_template_updated.description
 
     # Update idempotency
     - name: Run update again (idempotency)
@@ -265,7 +265,7 @@
       ansible.builtin.assert:
         that:
           - info_by_title.changed == false
-          - info_by_title['items'] | length > 0
+          - info_by_title.response | length > 0
 
     - name: List all services
       splunk.itsi.itsi_service_info:
@@ -275,7 +275,7 @@
       ansible.builtin.assert:
         that:
           - info_list_all.changed == false
-          - info_list_all['items'] is defined
+          - info_list_all.response is defined
 
     - name: List services with count limit
       splunk.itsi.itsi_service_info:
@@ -286,8 +286,8 @@
       ansible.builtin.assert:
         that:
           - info_limited.changed == false
-          - info_limited['items'] is defined
-          - info_limited['items'] | length <= 3
+          - info_limited.response is defined
+          - info_limited.response | length <= 3
 
     # Check mode DELETE
     - name: Check mode - Delete service (dry run)
@@ -310,7 +310,7 @@
     - name: Assert service was not deleted in check mode
       ansible.builtin.assert:
         that:
-          - verify_still_exists_no_template['items'] | length > 0
+          - verify_still_exists_no_template.response | length > 0
 
     # DELETE
     - name: Delete service without template
@@ -342,7 +342,7 @@
     - name: Assert service was deleted
       ansible.builtin.assert:
         that:
-          - verify_deleted_no_template['items'] | length == 0
+          - verify_deleted_no_template.response | length == 0
 
     # Non-existent service handling
     - name: Query non-existent service
@@ -354,7 +354,7 @@
       ansible.builtin.assert:
         that:
           - info_nonexistent.changed == false
-          - info_nonexistent['items'] | length == 0
+          - info_nonexistent.response | length == 0
 
     - name: COMPLETED - All integration tests passed
       ansible.builtin.debug:

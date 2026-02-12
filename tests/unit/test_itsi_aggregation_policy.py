@@ -559,9 +559,9 @@ class TestMain:
         mock_module.exit_json.assert_called_once()
         call_kwargs = mock_module.exit_json.call_args[1]
         assert call_kwargs["changed"] is True
-        assert "aggregation_policies" in call_kwargs
-        assert isinstance(call_kwargs["aggregation_policies"], list)
-        assert len(call_kwargs["aggregation_policies"]) == 1
+        assert "response" in call_kwargs
+        assert "after" in call_kwargs
+        assert call_kwargs["after"] == SAMPLE_POLICY
 
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_aggregation_policy.Connection")
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_aggregation_policy.AnsibleModule")
@@ -724,7 +724,9 @@ class TestMain:
         mock_module.exit_json.assert_called_once()
         call_kwargs = mock_module.exit_json.call_args[1]
         assert call_kwargs["changed"] is False
-        assert "msg" in call_kwargs
+        assert call_kwargs["before"] == {}
+        assert call_kwargs["after"] == {}
+        assert call_kwargs["diff"] == {}
 
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_aggregation_policy.Connection")
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_aggregation_policy.AnsibleModule")
@@ -796,7 +798,7 @@ class TestMain:
         mock_module.exit_json.assert_called_once()
         call_kwargs = mock_module.exit_json.call_args[1]
         assert call_kwargs["changed"] is True
-        assert call_kwargs["operation"] == "create"
+        assert call_kwargs["before"] == {}
 
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_aggregation_policy.Connection")
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_aggregation_policy.AnsibleModule")
@@ -836,7 +838,7 @@ class TestMain:
         mock_module.exit_json.assert_called_once()
         call_kwargs = mock_module.exit_json.call_args[1]
         assert call_kwargs["changed"] is True
-        assert call_kwargs["operation"] == "update"
+        assert call_kwargs["diff"]
 
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_aggregation_policy.Connection")
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_aggregation_policy.AnsibleModule")
@@ -876,7 +878,9 @@ class TestMain:
         mock_module.exit_json.assert_called_once()
         call_kwargs = mock_module.exit_json.call_args[1]
         assert call_kwargs["changed"] is True
-        assert call_kwargs["check_mode"] is True
+        assert call_kwargs["before"] != {}
+        assert call_kwargs["after"] == {}
+        assert call_kwargs["diff"] != {}
 
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_aggregation_policy.Connection")
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_aggregation_policy.AnsibleModule")
@@ -946,14 +950,14 @@ class TestMain:
 
         mock_module.exit_json.assert_called_once()
         call_kwargs = mock_module.exit_json.call_args[1]
-        body = call_kwargs["body"]
+        body = call_kwargs["after"]
         assert isinstance(body, dict)
         assert body["custom_field"] == "custom_value"
 
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_aggregation_policy.Connection")
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_aggregation_policy.AnsibleModule")
-    def test_main_check_mode_policy_not_found_treats_as_create(self, mock_module_class, mock_connection):
-        """Test main check mode treats not-found policy_id as create."""
+    def test_main_check_mode_policy_not_found_fails(self, mock_module_class, mock_connection):
+        """Test main check mode fails when policy_id is given but policy not found."""
         mock_module = MagicMock()
         mock_module._socket_path = "/tmp/socket"
         mock_module.params = {
@@ -982,13 +986,11 @@ class TestMain:
         mock_conn = make_mock_conn(404, "{}")
         mock_connection.return_value = mock_conn
 
-        with pytest.raises(AnsibleExitJson):
+        with pytest.raises(AnsibleFailJson):
             main()
 
-        mock_module.exit_json.assert_called_once()
-        call_kwargs = mock_module.exit_json.call_args[1]
-        assert call_kwargs["operation"] == "create"
-        assert call_kwargs["check_mode"] is True
+        mock_module.fail_json.assert_called_once()
+        assert "not found" in mock_module.fail_json.call_args[1]["msg"].lower()
 
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_aggregation_policy.Connection")
     @patch("ansible_collections.splunk.itsi.plugins.modules.itsi_aggregation_policy.AnsibleModule")
@@ -1024,7 +1026,7 @@ class TestMain:
 
         mock_module.exit_json.assert_called_once()
         call_kwargs = mock_module.exit_json.call_args[1]
-        body = call_kwargs["body"]
+        body = call_kwargs["after"]
         assert isinstance(body, dict)
         assert body["title"] == "Complete Policy"
         assert body["disabled"] is True

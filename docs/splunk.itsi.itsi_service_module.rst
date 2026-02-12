@@ -262,6 +262,40 @@ Common return values are documented `here <https://docs.ansible.com/ansible/late
             <tr>
                 <td colspan="1">
                     <div class="ansibleOptionAnchor" id="return-"></div>
+                    <b>after</b>
+                    <a class="ansibleOptionLink" href="#return-" title="Permalink to this return value"></a>
+                    <div style="font-size: small">
+                      <span style="color: purple">dictionary</span>
+                    </div>
+                </td>
+                <td>always</td>
+                <td>
+                            <div>Service state after the operation. Empty dict on delete.</div>
+                    <br/>
+                        <div style="font-size: smaller"><b>Sample:</b></div>
+                        <div style="font-size: smaller; color: blue; word-wrap: break-word; word-break: break-all;">{&#x27;title&#x27;: &#x27;api-gateway&#x27;, &#x27;enabled&#x27;: 0, &#x27;description&#x27;: &#x27;Disabled for maintenance&#x27;}</div>
+                </td>
+            </tr>
+            <tr>
+                <td colspan="1">
+                    <div class="ansibleOptionAnchor" id="return-"></div>
+                    <b>before</b>
+                    <a class="ansibleOptionLink" href="#return-" title="Permalink to this return value"></a>
+                    <div style="font-size: small">
+                      <span style="color: purple">dictionary</span>
+                    </div>
+                </td>
+                <td>always</td>
+                <td>
+                            <div>Service state before the operation. Empty dict on create or when already absent.</div>
+                    <br/>
+                        <div style="font-size: smaller"><b>Sample:</b></div>
+                        <div style="font-size: smaller; color: blue; word-wrap: break-word; word-break: break-all;">{&#x27;title&#x27;: &#x27;api-gateway&#x27;, &#x27;enabled&#x27;: 1, &#x27;description&#x27;: &#x27;Frontend + API&#x27;}</div>
+                </td>
+            </tr>
+            <tr>
+                <td colspan="1">
+                    <div class="ansibleOptionAnchor" id="return-"></div>
                     <b>changed</b>
                     <a class="ansibleOptionLink" href="#return-" title="Permalink to this return value"></a>
                     <div style="font-size: small">
@@ -277,62 +311,35 @@ Common return values are documented `here <https://docs.ansible.com/ansible/late
             <tr>
                 <td colspan="1">
                     <div class="ansibleOptionAnchor" id="return-"></div>
-                    <b>changed_fields</b>
-                    <a class="ansibleOptionLink" href="#return-" title="Permalink to this return value"></a>
-                    <div style="font-size: small">
-                      <span style="color: purple">list</span>
-                       / <span style="color: purple">elements=string</span>
-                    </div>
-                </td>
-                <td>when state=present and an update occurred</td>
-                <td>
-                            <div>Keys that changed during update.</div>
-                    <br/>
-                </td>
-            </tr>
-            <tr>
-                <td colspan="1">
-                    <div class="ansibleOptionAnchor" id="return-"></div>
                     <b>diff</b>
                     <a class="ansibleOptionLink" href="#return-" title="Permalink to this return value"></a>
                     <div style="font-size: small">
                       <span style="color: purple">dictionary</span>
                     </div>
                 </td>
-                <td>when check_mode is true or an update/delete occurs</td>
-                <td>
-                            <div>Structured before/after for managed fields.</div>
-                    <br/>
-                </td>
-            </tr>
-            <tr>
-                <td colspan="1">
-                    <div class="ansibleOptionAnchor" id="return-"></div>
-                    <b>raw</b>
-                    <a class="ansibleOptionLink" href="#return-" title="Permalink to this return value"></a>
-                    <div style="font-size: small">
-                      <span style="color: purple">raw</span>
-                    </div>
-                </td>
                 <td>always</td>
                 <td>
-                            <div>Raw JSON from Splunk for the last call.</div>
+                            <div>Fields that differ between before and after. Empty dict when unchanged.</div>
                     <br/>
+                        <div style="font-size: smaller"><b>Sample:</b></div>
+                        <div style="font-size: smaller; color: blue; word-wrap: break-word; word-break: break-all;">{&#x27;enabled&#x27;: 0, &#x27;description&#x27;: &#x27;Disabled for maintenance&#x27;}</div>
                 </td>
             </tr>
             <tr>
                 <td colspan="1">
                     <div class="ansibleOptionAnchor" id="return-"></div>
-                    <b>service</b>
+                    <b>response</b>
                     <a class="ansibleOptionLink" href="#return-" title="Permalink to this return value"></a>
                     <div style="font-size: small">
                       <span style="color: purple">dictionary</span>
                     </div>
                 </td>
-                <td>when not bulk</td>
+                <td>always</td>
                 <td>
-                            <div>Service document after the operation when available.</div>
+                            <div>Raw HTTP API response body from the last API call.</div>
                     <br/>
+                        <div style="font-size: smaller"><b>Sample:</b></div>
+                        <div style="font-size: smaller; color: blue; word-wrap: break-word; word-break: break-all;">{&#x27;_key&#x27;: &#x27;a2961217-9728-4e9f-b67b-15bf4a40ad7c&#x27;, &#x27;title&#x27;: &#x27;api-gateway&#x27;}</div>
                 </td>
             </tr>
     </table>

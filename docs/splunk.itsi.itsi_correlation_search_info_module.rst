@@ -148,22 +148,25 @@ Examples
     - name: Get all correlation searches
       splunk.itsi.itsi_correlation_search_info:
       register: all_searches
+    # Access: all_searches.response.correlation_searches
 
     - name: Display correlation search count
       debug:
-        msg: "Found {{ all_searches.correlation_searches | length }} correlation searches"
+        msg: "Found {{ all_searches.response.correlation_searches | length }} correlation searches"
 
     # Query specific correlation search by ID
     - name: Get correlation search by ID
       splunk.itsi.itsi_correlation_search_info:
         correlation_search_id: "Service_Monitoring_KPI_Degraded"
       register: search_by_id
+    # Access: search_by_id.response (single search dict)
 
     # Query correlation search by display name
     - name: Get correlation search by name
       splunk.itsi.itsi_correlation_search_info:
         name: "Service Monitoring - KPI Degraded"
       register: search_by_name
+    # Access: search_by_name.response (single search dict)
 
     # Query with specific fields only
     - name: Get correlation search with specific fields
@@ -202,87 +205,31 @@ Common return values are documented `here <https://docs.ansible.com/ansible/late
             <tr>
                 <td colspan="1">
                     <div class="ansibleOptionAnchor" id="return-"></div>
-                    <b>body</b>
+                    <b>changed</b>
                     <a class="ansibleOptionLink" href="#return-" title="Permalink to this return value"></a>
                     <div style="font-size: small">
-                      <span style="color: purple">string</span>
+                      <span style="color: purple">boolean</span>
                     </div>
                 </td>
                 <td>always</td>
                 <td>
-                            <div>Response body from the ITSI API</div>
+                            <div>Always false. This is an information module.</div>
                     <br/>
-                        <div style="font-size: smaller"><b>Sample:</b></div>
-                        <div style="font-size: smaller; color: blue; word-wrap: break-word; word-break: break-all;">{&quot;name&quot;: &quot;test-search&quot;, &quot;disabled&quot;: &quot;0&quot;}</div>
                 </td>
             </tr>
             <tr>
                 <td colspan="1">
                     <div class="ansibleOptionAnchor" id="return-"></div>
-                    <b>correlation_search</b>
+                    <b>response</b>
                     <a class="ansibleOptionLink" href="#return-" title="Permalink to this return value"></a>
                     <div style="font-size: small">
-                      <span style="color: purple">dictionary</span>
-                    </div>
-                </td>
-                <td>when specific search is requested</td>
-                <td>
-                            <div>Single correlation search details</div>
-                    <br/>
-                        <div style="font-size: smaller"><b>Sample:</b></div>
-                        <div style="font-size: smaller; color: blue; word-wrap: break-word; word-break: break-all;">{&#x27;name&#x27;: &#x27;test-search&#x27;, &#x27;disabled&#x27;: &#x27;0&#x27;, &#x27;search&#x27;: &#x27;index=main | head 1&#x27;}</div>
-                </td>
-            </tr>
-            <tr>
-                <td colspan="1">
-                    <div class="ansibleOptionAnchor" id="return-"></div>
-                    <b>correlation_searches</b>
-                    <a class="ansibleOptionLink" href="#return-" title="Permalink to this return value"></a>
-                    <div style="font-size: small">
-                      <span style="color: purple">list</span>
-                       / <span style="color: purple">elements=dictionary</span>
-                    </div>
-                </td>
-                <td>when no specific search is requested</td>
-                <td>
-                            <div>List of correlation searches (when listing multiple)</div>
-                    <br/>
-                        <div style="font-size: smaller"><b>Sample:</b></div>
-                        <div style="font-size: smaller; color: blue; word-wrap: break-word; word-break: break-all;">[{&#x27;name&#x27;: &#x27;Search 1&#x27;, &#x27;disabled&#x27;: &#x27;0&#x27;}, {&#x27;name&#x27;: &#x27;Search 2&#x27;, &#x27;disabled&#x27;: &#x27;1&#x27;}]</div>
-                </td>
-            </tr>
-            <tr>
-                <td colspan="1">
-                    <div class="ansibleOptionAnchor" id="return-"></div>
-                    <b>headers</b>
-                    <a class="ansibleOptionLink" href="#return-" title="Permalink to this return value"></a>
-                    <div style="font-size: small">
-                      <span style="color: purple">dictionary</span>
+                      <span style="color: purple">raw</span>
                     </div>
                 </td>
                 <td>always</td>
                 <td>
-                            <div>HTTP response headers from the ITSI API</div>
+                            <div>The API response body. For single-search queries (by ID or name) this is the flattened search dict, or empty dict when not found. For list queries this is a dict with a <code>correlation_searches</code> key.</div>
                     <br/>
-                        <div style="font-size: smaller"><b>Sample:</b></div>
-                        <div style="font-size: smaller; color: blue; word-wrap: break-word; word-break: break-all;">{&#x27;Content-Type&#x27;: &#x27;application/json&#x27;, &#x27;Server&#x27;: &#x27;Splunkd&#x27;}</div>
-                </td>
-            </tr>
-            <tr>
-                <td colspan="1">
-                    <div class="ansibleOptionAnchor" id="return-"></div>
-                    <b>status</b>
-                    <a class="ansibleOptionLink" href="#return-" title="Permalink to this return value"></a>
-                    <div style="font-size: small">
-                      <span style="color: purple">integer</span>
-                    </div>
-                </td>
-                <td>always</td>
-                <td>
-                            <div>HTTP status code from the ITSI API response</div>
-                    <br/>
-                        <div style="font-size: smaller"><b>Sample:</b></div>
-                        <div style="font-size: smaller; color: blue; word-wrap: break-word; word-break: break-all;">200</div>
                 </td>
             </tr>
     </table>
