@@ -87,6 +87,7 @@ Name | Description
 ### Modules
 Name | Description
 --- | ---
+[splunk.itsi.itsi_add_episode_comments](https://github.com/ansible-collections/splunk.itsi/blob/main/docs/splunk.itsi.itsi_add_episode_comments_module.rst)|Add comments to Splunk ITSI episodes
 [splunk.itsi.itsi_aggregation_policy](https://github.com/ansible-collections/splunk.itsi/blob/main/docs/splunk.itsi.itsi_aggregation_policy_module.rst)|Manage Splunk ITSI aggregation policies
 [splunk.itsi.itsi_aggregation_policy_info](https://github.com/ansible-collections/splunk.itsi/blob/main/docs/splunk.itsi.itsi_aggregation_policy_info_module.rst)|Get information about Splunk ITSI aggregation policies
 [splunk.itsi.itsi_correlation_search](https://github.com/ansible-collections/splunk.itsi/blob/main/docs/splunk.itsi.itsi_correlation_search_module.rst)|Manage Splunk ITSI correlation searches

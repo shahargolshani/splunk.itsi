@@ -1,0 +1,83 @@
+---
+- name: START itsi_add_episode_comments integration tests
+  ansible.builtin.debug:
+    msg: "START itsi_add_episode_comments integration tests on connection={{ ansible_connection }}"
+
+# Setup -- verify the pre-existing test episode is reachable
+- name: Verify test episode exists
+  splunk.itsi.itsi_episode_details_info:
+    episode_id: "{{ test_episode_id }}"
+  register: verify_episode
+
+- name: Assert test episode was found
+  ansible.builtin.assert:
+    that:
+      - verify_episode.episodes | length == 1
+      - verify_episode.episodes[0]._key == test_episode_id
+    fail_msg: >-
+      Pre-existing episode with _key "{{ test_episode_id }}" not found.
+      Integration tests require this episode to exist before running.
+
+# Add a comment
+- name: Add comment to episode
+  splunk.itsi.itsi_add_episode_comments:
+    episode_key: "{{ test_episode_id }}"
+    comment: "{{ test_comment_text }}"
+  register: add_comment_result
+
+- name: Assert comment was added successfully
+  ansible.builtin.assert:
+    that:
+      - add_comment_result.changed == true
+      - add_comment_result.episode_key == test_episode_id
+      - add_comment_result.before == {}
+      - add_comment_result.after.comment == test_comment_text
+      - add_comment_result.after.event_id == test_episode_id
+      - add_comment_result.after.is_group == true
+      - add_comment_result.diff == add_comment_result.after
+      - add_comment_result.response is defined
+
+# Add a second comment (proves every run creates a new comment)
+- name: Add second comment to episode
+  splunk.itsi.itsi_add_episode_comments:
+    episode_key: "{{ test_episode_id }}"
+    comment: "{{ test_comment_text_second }}"
+  register: second_comment_result
+
+- name: Assert second comment also returns changed=true
+  ansible.builtin.assert:
+    that:
+      - second_comment_result.changed == true
+      - second_comment_result.after.comment == test_comment_text_second
+
+# Check mode -- no actual comment posted
+- name: Check mode - Add comment (dry run)
+  splunk.itsi.itsi_add_episode_comments:
+    episode_key: "{{ test_episode_id }}"
+    comment: "This comment should NOT be posted"
+  check_mode: true
+  register: check_mode_result
+
+- name: Assert check mode returns changed=true with before/after/diff
+  ansible.builtin.assert:
+    that:
+      - check_mode_result.changed == true
+      - check_mode_result.episode_key == test_episode_id
+      - check_mode_result.before == {}
+      - check_mode_result.after.comment == "This comment should NOT be posted"
+      - check_mode_result.diff == check_mode_result.after
+      - check_mode_result.response == {}
+
+# Add comment with is_group=false
+- name: Add comment with is_group=false
+  splunk.itsi.itsi_add_episode_comments:
+    episode_key: "{{ test_episode_id }}"
+    comment: "Comment with is_group=false"
+    is_group: false
+  register: is_group_false_result
+
+- name: Assert is_group=false is reflected in after
+  ansible.builtin.assert:
+    that:
+      - is_group_false_result.changed == true
+      - is_group_false_result.after.is_group == false
