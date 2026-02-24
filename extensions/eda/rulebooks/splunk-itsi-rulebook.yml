@@ -1,0 +1,23 @@
+---
+- name: Listen for Splunk webhook events
+  hosts: localhost
+  ## Define our source for events
+  sources:
+    - ansible.eda.webhook:
+        port: "{{ port | default(5556) }}"
+        host: 0.0.0.0
+  ## Define the conditions we are looking for
+  rules:
+    - name: Process Splunk webhook payload
+      condition:
+        all:
+          - event.payload.event_id is defined
+      ## Define the action we should take when the condition is met
+      action:
+        run_job_template:
+          name: splunk_itsi_eda
+          organization: Default
+          ## To pass job args to AAP EDA, check "Prompt on launch" checkbox in "Extra variables" line on the job template
+          job_args:
+            extra_vars:
+              rulebook_action_var: "Use this to pass vars from rulebook to playbook"

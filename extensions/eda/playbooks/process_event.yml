@@ -1,0 +1,23 @@
+---
+- name: Process Splunk webhook event
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Print event metadata
+      ansible.builtin.debug:
+        msg: "Variable from the rulebook: {{ rulebook_action_var }}"
+
+    - name: Print event metadata
+      ansible.builtin.debug:
+        msg:
+          - "Event ID: {{ ansible_eda.event.payload.event_id }}"
+          - "Event Identifier: {{ ansible_eda.event.payload.event_identifier_string }}"
+
+    - name: Print event payload
+      ansible.builtin.debug:
+        msg: "Payload from the rulebook: {{ ansible_eda.event.payload }}"
+
+    - name: Handle plaintext results
+      ansible.builtin.debug:
+        msg: "Plaintext results: {{ ansible_eda.event.payload.comments }}"
+      when: ansible_eda.event.payload.comments is defined and ansible_eda.event.payload.comments | type_debug == 'list'

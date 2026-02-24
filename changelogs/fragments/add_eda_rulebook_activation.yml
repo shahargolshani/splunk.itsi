@@ -1,0 +1,3 @@
+---
+minor_changes:
+  - Add validated content for Event-Driven Ansible (EDA) rulebook activation with Splunk ITSI webhook integration.

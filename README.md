@@ -1,8 +1,7 @@
 # Splunk ITSI Ansible Collection
 
 <!-- Add CI and code coverage badges here. Samples included below. -->
-
-TBD
+<!-- TBD -->
 
 <!-- Describe the collection and why a user would want to use it. What does the collection do? -->
 
@@ -77,6 +76,11 @@ PEP440 is the schema used to describe the versions of Ansible.
 <!--end requires_ansible-->
 
 ## Included content
+
+### Event Driven Ansible (EDA)
+Name | Description
+--- | ---
+[Splunk ITSI EDA Rulebook Activation](https://github.com/ansible-collections/splunk.itsi/blob/main/extensions/eda/README.md)|Setup and configuration for EDA rulebook activation with Splunk ITSI webhook integration
 
 <!--start collection content-->
 ### Httpapi plugins
