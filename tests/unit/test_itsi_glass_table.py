@@ -11,6 +11,7 @@ import pytest
 from ansible_collections.splunk.itsi.plugins.modules.itsi_glass_table import (
     _build_create_payload,
     _build_desired,
+    _sync_title_desc_into_definition,
     main,
 )
 from conftest import AnsibleExitJson, AnsibleFailJson, make_mock_conn
@@ -115,6 +116,45 @@ class TestBuildCreatePayload:
         desired = {"title": "T", "description": "D"}
         payload = _build_create_payload(desired)
         assert "definition" not in payload
+
+
+# -- _sync_title_desc_into_definition --
+
+
+class TestSyncTitleDescIntoDefinition:
+    def test_syncs_title_into_existing_definition(self):
+        data = {"title": "New", "definition": {"title": "Old", "layout": {}}}
+        _sync_title_desc_into_definition(data)
+        assert data["definition"]["title"] == "New"
+        assert data["definition"]["layout"] == {}
+
+    def test_syncs_description_into_existing_definition(self):
+        data = {"description": "New", "definition": {"description": "Old"}}
+        _sync_title_desc_into_definition(data)
+        assert data["definition"]["description"] == "New"
+
+    def test_uses_base_definition_when_no_definition_in_data(self):
+        base = {"title": "Base", "layout": {"tabs": []}}
+        data = {"title": "Updated"}
+        _sync_title_desc_into_definition(data, base_definition=base)
+        assert data["definition"]["title"] == "Updated"
+        assert data["definition"]["layout"] == {"tabs": []}
+
+    def test_noop_when_no_title_or_description(self):
+        data = {"sharing": "app", "definition": {"title": "T"}}
+        _sync_title_desc_into_definition(data)
+        assert data["definition"]["title"] == "T"
+
+    def test_noop_when_no_definition_and_no_base(self):
+        data = {"title": "T"}
+        _sync_title_desc_into_definition(data)
+        assert "definition" not in data
+
+    def test_does_not_mutate_original_definition(self):
+        original_def = {"title": "Old", "layout": {}}
+        data = {"title": "New", "definition": original_def}
+        _sync_title_desc_into_definition(data)
+        assert original_def["title"] == "Old"
 
 
 # -- main(): create --
@@ -330,15 +370,19 @@ class TestMainDelete:
 
     @patch(f"{MODULE_PATH}.Connection")
     @patch(f"{MODULE_PATH}.AnsibleModule")
-    def test_delete_requires_id(self, mock_mod_cls, mock_conn_cls):
+    def test_delete_requires_id_via_argspec(self, mock_mod_cls, mock_conn_cls):
+        """Verify required_if enforces glass_table_id for state=absent."""
         mock_mod, mock_conn = _make_main_module({"state": "absent"})
         mock_mod_cls.return_value = mock_mod
         mock_conn_cls.return_value = mock_conn
 
-        with pytest.raises(AnsibleFailJson):
+        try:
             main()
+        except (AnsibleExitJson, AnsibleFailJson):
+            pass
 
-        assert "glass_table_id" in mock_mod.fail_json.call_args[1]["msg"]
+        call_kwargs = mock_mod_cls.call_args[1]
+        assert ("state", "absent", ("glass_table_id",)) in call_kwargs["required_if"]
 
     @patch(f"{MODULE_PATH}.Connection")
     @patch(f"{MODULE_PATH}.AnsibleModule")
@@ -392,3 +436,127 @@ class TestMainErrors:
             main()
 
         assert "Failed to establish connection" in mock_mod.fail_json.call_args[1]["msg"]
+
+
+class TestEarlyValidation:
+    @patch(f"{MODULE_PATH}.Connection")
+    @patch(f"{MODULE_PATH}.AnsibleModule")
+    def test_empty_definition_rejected_before_connection(self, mock_mod_cls, mock_conn_cls):
+        mock_mod, mock_conn = _make_main_module(
+            {"title": "T", "definition": {}},
+        )
+        mock_mod_cls.return_value = mock_mod
+        mock_conn_cls.return_value = mock_conn
+
+        with pytest.raises(AnsibleFailJson):
+            main()
+
+        assert "must not be empty" in mock_mod.fail_json.call_args[1]["msg"]
+        mock_conn_cls.assert_not_called()
+
+    @patch(f"{MODULE_PATH}.Connection")
+    @patch(f"{MODULE_PATH}.AnsibleModule")
+    def test_create_no_title_rejected_before_connection(self, mock_mod_cls, mock_conn_cls):
+        mock_mod, mock_conn = _make_main_module(
+            {"definition": SAMPLE_DEFINITION},
+        )
+        mock_mod_cls.return_value = mock_mod
+        mock_conn_cls.return_value = mock_conn
+
+        with pytest.raises(AnsibleFailJson):
+            main()
+
+        assert "title" in mock_mod.fail_json.call_args[1]["msg"]
+        mock_conn_cls.assert_not_called()
+
+    @patch(f"{MODULE_PATH}.Connection")
+    @patch(f"{MODULE_PATH}.AnsibleModule")
+    def test_create_no_definition_rejected_before_connection(self, mock_mod_cls, mock_conn_cls):
+        mock_mod, mock_conn = _make_main_module({"title": "T"})
+        mock_mod_cls.return_value = mock_mod
+        mock_conn_cls.return_value = mock_conn
+
+        with pytest.raises(AnsibleFailJson):
+            main()
+
+        assert "definition" in mock_mod.fail_json.call_args[1]["msg"]
+        mock_conn_cls.assert_not_called()
+
+    @patch(f"{MODULE_PATH}.Connection")
+    @patch(f"{MODULE_PATH}.AnsibleModule")
+    def test_empty_definition_rejected_on_update(self, mock_mod_cls, mock_conn_cls):
+        mock_mod, mock_conn = _make_main_module(
+            {"glass_table_id": "abc123", "definition": {}},
+        )
+        mock_mod_cls.return_value = mock_mod
+        mock_conn_cls.return_value = mock_conn
+
+        with pytest.raises(AnsibleFailJson):
+            main()
+
+        assert "must not be empty" in mock_mod.fail_json.call_args[1]["msg"]
+        mock_conn_cls.assert_not_called()
+
+
+# -- update: title/description sync into definition --
+
+
+class TestUpdateDefinitionSync:
+    @patch(f"{MODULE_PATH}.Connection")
+    @patch(f"{MODULE_PATH}.AnsibleModule")
+    def test_update_title_syncs_into_definition(self, mock_mod_cls, mock_conn_cls):
+        """Updating title also updates definition.title."""
+        mock_mod, mock_conn = _make_main_module(
+            {"glass_table_id": "abc123", "title": "Renamed GT"},
+            conn_body=json.dumps(SAMPLE_GT_API),
+        )
+        mock_mod_cls.return_value = mock_mod
+        mock_conn_cls.return_value = mock_conn
+
+        with pytest.raises(AnsibleExitJson):
+            main()
+
+        kw = mock_mod.exit_json.call_args[1]
+        assert kw["changed"] is True
+        assert kw["after"]["title"] == "Renamed GT"
+        assert kw["after"]["definition"]["title"] == "Renamed GT"
+
+    @patch(f"{MODULE_PATH}.Connection")
+    @patch(f"{MODULE_PATH}.AnsibleModule")
+    def test_update_description_syncs_into_definition(self, mock_mod_cls, mock_conn_cls):
+        """Updating description also updates definition.description."""
+        mock_mod, mock_conn = _make_main_module(
+            {"glass_table_id": "abc123", "description": "new desc"},
+            conn_body=json.dumps(SAMPLE_GT_API),
+        )
+        mock_mod_cls.return_value = mock_mod
+        mock_conn_cls.return_value = mock_conn
+
+        with pytest.raises(AnsibleExitJson):
+            main()
+
+        kw = mock_mod.exit_json.call_args[1]
+        assert kw["changed"] is True
+        assert kw["after"]["description"] == "new desc"
+        assert kw["after"]["definition"]["description"] == "new desc"
+
+    @patch(f"{MODULE_PATH}.Connection")
+    @patch(f"{MODULE_PATH}.AnsibleModule")
+    def test_update_title_idempotent_with_matching_definition(
+        self,
+        mock_mod_cls,
+        mock_conn_cls,
+    ):
+        """No change when title already matches definition.title."""
+        mock_mod, mock_conn = _make_main_module(
+            {"glass_table_id": "abc123", "title": "My GT"},
+            conn_body=json.dumps(SAMPLE_GT_API),
+        )
+        mock_mod_cls.return_value = mock_mod
+        mock_conn_cls.return_value = mock_conn
+
+        with pytest.raises(AnsibleExitJson):
+            main()
+
+        kw = mock_mod.exit_json.call_args[1]
+        assert kw["changed"] is False

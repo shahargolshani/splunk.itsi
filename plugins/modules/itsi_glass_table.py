@@ -215,7 +215,7 @@ response:
   type: dict
 """
 
-from typing import Any
+from typing import Any, Optional
 
 from ansible.module_utils.basic import AnsibleModule
 from ansible.module_utils.connection import Connection
@@ -231,6 +231,25 @@ from ansible_collections.splunk.itsi.plugins.module_utils.splunk_utils import ex
 
 # Fields managed by this module for diff tracking
 DIFF_FIELDS = ("title", "description", "definition", "sharing")
+
+
+def _validate_params(module: AnsibleModule) -> None:
+    """Validate module parameters
+
+    Args:
+        module: The AnsibleModule instance.
+    """
+    params = module.params
+    definition = params.get("definition")
+
+    if definition is not None and not definition:
+        module.fail_json(msg="'definition' must not be empty when provided")
+
+    if params["state"] == "present" and not params.get("glass_table_id"):
+        if not params.get("title"):
+            module.fail_json(msg="'title' is required when creating a new glass table")
+        if definition is None:
+            module.fail_json(msg="'definition' is required when creating a new glass table")
 
 
 def _build_desired(params: dict[str, Any]) -> dict[str, Any]:
@@ -252,9 +271,41 @@ def _build_desired(params: dict[str, Any]) -> dict[str, Any]:
     return desired
 
 
+def _sync_title_desc_into_definition(
+    data: dict[str, Any],
+    base_definition: Optional[dict[str, Any]] = None,
+) -> None:
+    """Sync top-level title/description into definition for consistency.
+
+    When the user provides ``title`` or ``description`` at the module level,
+    those values are also written into ``definition.title`` /
+    ``definition.description`` so the two levels stay in sync.
+
+    Args:
+        data: Payload dict that may contain title, description, and/or definition.
+        base_definition: Existing definition from the API to use as a starting
+            point when *data* does not already contain a definition key.
+    """
+    sync_fields = {f: data[f] for f in ("title", "description") if f in data}
+    if not sync_fields:
+        return
+
+    if "definition" in data:
+        definition = dict(data["definition"])
+    elif base_definition:
+        definition = dict(base_definition)
+    else:
+        return
+
+    definition.update(sync_fields)
+    data["definition"] = definition
+
+
 def _build_create_payload(desired: dict[str, Any]) -> dict[str, Any]:
     """Build the API payload for creating a new glass table.
-       And add required payload fields (_owner, _user, gt_version).
+
+    Adds required payload fields (_owner, _user, gt_version) and syncs
+    top-level title/description into definition.
 
     Args:
         desired: Module-level desired state (title, description, definition).
@@ -274,13 +325,7 @@ def _build_create_payload(desired: dict[str, Any]) -> dict[str, Any]:
     if "sharing" in desired:
         payload["acl"] = {"sharing": desired["sharing"]}
 
-    # Sync top-level title/description into definition so both levels match
-    if "definition" in payload:
-        definition = dict(payload["definition"])
-        for field in ("title", "description"):
-            if field in payload:
-                definition[field] = payload[field]
-        payload["definition"] = definition
+    _sync_title_desc_into_definition(payload)
 
     return payload
 
@@ -364,11 +409,6 @@ def _handle_absent(
         client: ItsiRequest instance.
         glass_table_id: Glass table _key to delete.
     """
-    if not glass_table_id:
-        module.fail_json(
-            msg="glass_table_id is required for state=absent (titles are not unique)",
-        )
-
     current = get_glass_table_by_id(client, glass_table_id)
     if current is None:
         exit_with_result(module)
@@ -399,16 +439,6 @@ def _handle_create(
         client: ItsiRequest instance.
         desired: Desired payload built from module params.
     """
-    if "title" not in desired:
-        module.fail_json(
-            msg="'title' is required when creating a new glass table",
-        )
-
-    if "definition" not in desired:
-        module.fail_json(
-            msg="'definition' is required when creating a new glass table",
-        )
-
     after = {k: desired.get(k) for k in DIFF_FIELDS if k in desired}
 
     if module.check_mode:
@@ -439,6 +469,8 @@ def _handle_update(
 
     if not desired:
         exit_with_result(module)
+
+    _sync_title_desc_into_definition(desired, base_definition=current.get("definition"))
 
     # Extract comparable fields from current state.
     # sharing lives under acl.sharing in the API, so map it to the flat key.
@@ -499,12 +531,17 @@ def main() -> None:
             state=dict(type="str", choices=["present", "absent"], default="present"),
         ),
         supports_check_mode=True,
+        required_if=[
+            ("state", "absent", ("glass_table_id",)),
+        ],
     )
 
     if not getattr(module, "_socket_path", None):
         module.fail_json(
             msg="Use ansible_connection=httpapi and ansible_network_os=splunk.itsi.itsi_api_client",
         )
+
+    _validate_params(module)
 
     params = module.params
 
