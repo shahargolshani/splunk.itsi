@@ -16,3 +16,19 @@ readme: README.md
 version: "1.0.0"
 dependencies:
   ansible.netcommon: ">=6.0.0"
+build_ignore:
+  # https://docs.ansible.com/ansible/devel/dev_guide/developing_collections_distributing.html#ignoring-files-and-folders
+  - codecov.yml
+  - sonar-project.properties
+  - .ansible-lint
+  - .azure-pipelines
+  - .cursor
+  - .darglint
+  - .flake8
+  - .github
+  - .gitignore
+  - .pre-commit-config.yaml
+  - .prettierignore
+  - .pytest_cache
+  - .vscode
+  - .yamllint
