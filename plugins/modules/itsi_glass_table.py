@@ -44,7 +44,9 @@ options:
     description:
       - Raw JSON definition object for the glass table.
       - Contains the full layout, visualizations, data sources, and inputs configuration.
-      - The module passes this value as-is to the API without modification.
+      - The module validates this value against the Splunk Dashboard Studio JSON Schema
+        and checks referential integrity (e.g. layout items reference existing visualizations,
+        data source IDs are valid) before sending it to the API.
       - The user is responsible for all fields within the definition, including
         C(definition.title) and C(definition.description) if desired.
       - Required when creating a new glass table (C(state=present) without C(glass_table_id)).
@@ -76,8 +78,10 @@ notes:
   - This module manages ITSI glass tables using the itoa_interface/glass_table endpoint.
   - Glass table titles are NOT unique. Use C(glass_table_id) to target a specific glass table
     for updates or deletion.
-  - The C(definition) parameter is a raw JSON dict passed as-is to the API. The module does
-    not auto-populate C(definition.title) or C(definition.description).
+  - The C(definition) parameter is validated against the Splunk Dashboard Studio / ITSI Glass
+    Table JSON Schema before being sent to the API. Referential integrity between sections
+    (visualizations, data sources, layout, inputs) is also checked.
+  - The module does not auto-populate C(definition.title) or C(definition.description).
   - Update operations use C(is_partial_data=1) and send only the fields that changed.
   - This module is idempotent. If the desired field values already match the current state,
     no update is performed and C(changed) is returned as C(false).
@@ -224,6 +228,7 @@ from ansible_collections.ansible.netcommon.plugins.module_utils.network.common i
 )
 from ansible_collections.splunk.itsi.plugins.module_utils.glass_table import (
     BASE_GLASS_TABLE_ENDPOINT,
+    GlassTableDefinitionValidator,
     get_glass_table_by_id,
 )
 from ansible_collections.splunk.itsi.plugins.module_utils.itsi_request import ItsiRequest
@@ -328,6 +333,25 @@ def _build_create_payload(desired: dict[str, Any]) -> dict[str, Any]:
     _sync_title_desc_into_definition(payload)
 
     return payload
+
+
+def _validate_definition_or_fail(
+    module: AnsibleModule,
+    definition: dict[str, Any],
+) -> None:
+    """Validate a glass table definition and fail the module if invalid.
+
+    Args:
+        module: Ansible module instance.
+        definition: The definition dict to validate.
+    """
+    validator = GlassTableDefinitionValidator()
+    errors = validator.validate(definition)
+    if errors:
+        module.fail_json(
+            msg="Glass table definition validation failed",
+            validation_errors=errors,
+        )
 
 
 def _update_glass_table(
@@ -439,6 +463,18 @@ def _handle_create(
         client: ItsiRequest instance.
         desired: Desired payload built from module params.
     """
+    if "title" not in desired:
+        module.fail_json(
+            msg="'title' is required when creating a new glass table",
+        )
+
+    if "definition" not in desired:
+        module.fail_json(
+            msg="'definition' is required when creating a new glass table",
+        )
+
+    _validate_definition_or_fail(module, desired["definition"])
+
     after = {k: desired.get(k) for k in DIFF_FIELDS if k in desired}
 
     if module.check_mode:
@@ -469,6 +505,9 @@ def _handle_update(
 
     if not desired:
         exit_with_result(module)
+
+    if "definition" in desired:
+        _validate_definition_or_fail(module, desired["definition"])
 
     _sync_title_desc_into_definition(desired, base_definition=current.get("definition"))
 

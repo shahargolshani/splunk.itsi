@@ -59,7 +59,7 @@ Parameters
                 <td>
                         <div>Raw JSON definition object for the glass table.</div>
                         <div>Contains the full layout, visualizations, data sources, and inputs configuration.</div>
-                        <div>The module passes this value as-is to the API without modification.</div>
+                        <div>The module validates this value against the Splunk Dashboard Studio JSON Schema and checks referential integrity (e.g. layout items reference existing visualizations, data source IDs are valid) before sending it to the API.</div>
                         <div>The user is responsible for all fields within the definition, including <code>definition.title</code> and <code>definition.description</code> if desired.</div>
                         <div>Required when creating a new glass table (<code>state=present</code> without <code>glass_table_id</code>).</div>
                 </td>
@@ -166,7 +166,8 @@ Notes
 .. note::
    - This module manages ITSI glass tables using the itoa_interface/glass_table endpoint.
    - Glass table titles are NOT unique. Use ``glass_table_id`` to target a specific glass table for updates or deletion.
-   - The ``definition`` parameter is a raw JSON dict passed as-is to the API. The module does not auto-populate ``definition.title`` or ``definition.description``.
+   - The ``definition`` parameter is validated against the Splunk Dashboard Studio / ITSI Glass Table JSON Schema before being sent to the API. Referential integrity between sections (visualizations, data sources, layout, inputs) is also checked.
+   - The module does not auto-populate ``definition.title`` or ``definition.description``.
    - Update operations use ``is_partial_data=1`` and send only the fields that changed.
    - This module is idempotent. If the desired field values already match the current state, no update is performed and ``changed`` is returned as ``false``.
    - Check mode is supported. In check mode the module reports whether changes would be made without actually calling the API.

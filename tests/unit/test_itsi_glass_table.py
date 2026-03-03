@@ -17,6 +17,7 @@ from ansible_collections.splunk.itsi.plugins.modules.itsi_glass_table import (
 from conftest import AnsibleExitJson, AnsibleFailJson, make_mock_conn
 
 MODULE_PATH = "ansible_collections.splunk.itsi.plugins.modules.itsi_glass_table"
+VALIDATOR_PATH = f"{MODULE_PATH}._validate_definition_or_fail"
 
 SAMPLE_DEFINITION = {"title": "My GT", "description": "desc", "layout": {"tabs": []}}
 
@@ -161,9 +162,10 @@ class TestSyncTitleDescIntoDefinition:
 
 
 class TestMainCreate:
+    @patch(VALIDATOR_PATH)
     @patch(f"{MODULE_PATH}.Connection")
     @patch(f"{MODULE_PATH}.AnsibleModule")
-    def test_create_success(self, mock_mod_cls, mock_conn_cls):
+    def test_create_success(self, mock_mod_cls, mock_conn_cls, _mock_validate):
         api_resp = {"_key": "new123", "title": "T"}
         mock_mod, mock_conn = _make_main_module(
             {"title": "T", "description": "D", "definition": SAMPLE_DEFINITION},
@@ -205,9 +207,10 @@ class TestMainCreate:
 
         assert "definition" in mock_mod.fail_json.call_args[1]["msg"]
 
+    @patch(VALIDATOR_PATH)
     @patch(f"{MODULE_PATH}.Connection")
     @patch(f"{MODULE_PATH}.AnsibleModule")
-    def test_create_check_mode(self, mock_mod_cls, mock_conn_cls):
+    def test_create_check_mode(self, mock_mod_cls, mock_conn_cls, _mock_validate):
         mock_mod, mock_conn = _make_main_module(
             {"title": "T", "definition": SAMPLE_DEFINITION},
         )
@@ -222,6 +225,32 @@ class TestMainCreate:
         assert kw["changed"] is True
         # API should NOT have been called
         mock_conn.send_request.assert_not_called()
+
+    @patch(f"{MODULE_PATH}.Connection")
+    @patch(f"{MODULE_PATH}.AnsibleModule")
+    def test_create_validation_failure(self, mock_mod_cls, mock_conn_cls):
+        """Invalid definition triggers fail_json with validation_errors."""
+        bad_definition = {
+            "visualizations": {
+                "viz_1": {
+                    "type": "splunk.singlevalue",
+                    "dataSources": {"primary": "ds_nonexistent"},
+                },
+            },
+        }
+        mock_mod, mock_conn = _make_main_module(
+            {"title": "T", "definition": bad_definition},
+        )
+        mock_mod_cls.return_value = mock_mod
+        mock_conn_cls.return_value = mock_conn
+
+        with pytest.raises(AnsibleFailJson):
+            main()
+
+        call_kw = mock_mod.fail_json.call_args[1]
+        assert "validation" in call_kw["msg"].lower()
+        assert "validation_errors" in call_kw
+        assert len(call_kw["validation_errors"]) > 0
 
 
 # -- main(): update --
@@ -330,6 +359,32 @@ class TestMainUpdate:
         kw = mock_mod.exit_json.call_args[1]
         assert kw["changed"] is True
         assert kw["diff"]["sharing"] == "app"
+
+    @patch(f"{MODULE_PATH}.Connection")
+    @patch(f"{MODULE_PATH}.AnsibleModule")
+    def test_update_definition_validation_failure(self, mock_mod_cls, mock_conn_cls):
+        """Invalid definition on update triggers fail_json."""
+        bad_definition = {
+            "visualizations": {
+                "viz_1": {
+                    "type": "splunk.singlevalue",
+                    "dataSources": {"primary": "ds_nonexistent"},
+                },
+            },
+        }
+        mock_mod, mock_conn = _make_main_module(
+            {"glass_table_id": "abc123", "definition": bad_definition},
+            conn_body=json.dumps(SAMPLE_GT_API),
+        )
+        mock_mod_cls.return_value = mock_mod
+        mock_conn_cls.return_value = mock_conn
+
+        with pytest.raises(AnsibleFailJson):
+            main()
+
+        call_kw = mock_mod.fail_json.call_args[1]
+        assert "validation" in call_kw["msg"].lower()
+        assert "validation_errors" in call_kw
 
 
 # -- main(): delete --

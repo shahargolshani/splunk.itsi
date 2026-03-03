@@ -55,3 +55,55 @@ test_glass_table:
           token: global_refresh_rate
         type: input.dropdown
         title: Global Refresh Rate
+
+# ---------- invalid definitions ----------
+
+# Schema violation + referential integrity violation so it fails even without jsonschema
+test_glass_table_invalid_schema:
+  title: "ansible-test-gt-invalid-schema"
+  description: "Glass table with schema and referential integrity violations"
+  definition:
+    title: "ansible-test-gt-invalid-schema"
+    description: "Should fail validation"
+    bogus_top_level_key: "not allowed"
+    dataSources:
+      ds_bad:
+        type: "not.a.valid.ds.type"
+        options:
+          query: "| makeresults"
+    visualizations:
+      viz_broken:
+        type: splunk.singlevalue
+        dataSources:
+          primary: ds_nonexistent
+    inputs: {}
+    layout:
+      type: absolute
+
+# Referential integrity violation: viz references non-existent data source,
+# tab references non-existent layout definition
+test_glass_table_invalid_refs:
+  title: "ansible-test-gt-invalid-refs"
+  description: "Glass table with broken cross-references"
+  definition:
+    title: "ansible-test-gt-invalid-refs"
+    description: "Should fail referential integrity checks"
+    dataSources:
+      ds_real:
+        type: ds.search
+        options:
+          query: "| makeresults"
+    visualizations:
+      viz_orphan:
+        type: splunk.singlevalue
+        dataSources:
+          primary: ds_does_not_exist
+    inputs: {}
+    layout:
+      tabs:
+        items:
+          - layoutId: layout_nope
+      layoutDefinitions:
+        layout_real:
+          type: absolute
+          structure: []

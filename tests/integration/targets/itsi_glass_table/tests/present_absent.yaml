@@ -242,6 +242,43 @@
           - update_missing is failed
           - "'not found' in update_missing.msg"
 
+    # Definition validation: invalid definitions (must fail) #
+    # Schema violation: unknown top-level key + invalid data source type
+    - name: Attempt create with schema-invalid definition
+      splunk.itsi.itsi_glass_table:
+        title: "{{ test_glass_table_invalid_schema.title }}"
+        description: "{{ test_glass_table_invalid_schema.description }}"
+        definition: "{{ test_glass_table_invalid_schema.definition }}"
+        state: present
+      register: create_invalid_schema
+      ignore_errors: true
+
+    - name: Assert schema-invalid definition was rejected
+      ansible.builtin.assert:
+        that:
+          - create_invalid_schema is failed
+          - "'validation failed' in create_invalid_schema.msg"
+          - create_invalid_schema.validation_errors is defined
+          - create_invalid_schema.validation_errors | length > 0
+
+    # broken data source + layout refs
+    - name: Attempt create with referential-integrity-invalid definition
+      splunk.itsi.itsi_glass_table:
+        title: "{{ test_glass_table_invalid_refs.title }}"
+        description: "{{ test_glass_table_invalid_refs.description }}"
+        definition: "{{ test_glass_table_invalid_refs.definition }}"
+        state: present
+      register: create_invalid_refs
+      ignore_errors: true
+
+    - name: Assert referential-integrity-invalid definition was rejected
+      ansible.builtin.assert:
+        that:
+          - create_invalid_refs is failed
+          - "'validation failed' in create_invalid_refs.msg"
+          - create_invalid_refs.validation_errors is defined
+          - create_invalid_refs.validation_errors | length >= 2
+
     - name: All itsi_glass_table integration tests passed
       ansible.builtin.debug:
         msg: "All itsi_glass_table and itsi_glass_table_info integration tests completed."
