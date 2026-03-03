@@ -164,6 +164,26 @@ EXAMPLES = r"""
     policy_id: "{{ create_result.response._key }}"
     group_severity: "high"
     disabled: false
+    filter_criteria:
+      condition: "OR"
+      items:
+        [
+          {
+            "type": "clause",
+            "config":
+              {
+                "items":
+                  [
+                    {
+                      "type": "notable_event_field",
+                      "config":
+                        { "field": "severity", "operator": "<", "value": "6" },
+                    },
+                  ],
+                "condition": "AND",
+              },
+          },
+        ]
     state: present
   register: update_result
 # update_result.diff shows fields that changed
@@ -229,20 +249,19 @@ response:
     title: "Default Policy"
 """
 
-# Standard library imports
-import json
 from urllib.parse import quote_plus
 
-# Ansible imports
 from ansible.module_utils.basic import AnsibleModule
 from ansible.module_utils.connection import Connection
 from ansible_collections.splunk.itsi.plugins.module_utils.aggregation_policy_utils import (
     BASE_AGGREGATION_POLICY_ENDPOINT,
-    flatten_policy_object,
     get_aggregation_policy_by_id,
 )
 from ansible_collections.splunk.itsi.plugins.module_utils.itsi_request import ItsiRequest
-from ansible_collections.splunk.itsi.plugins.module_utils.splunk_utils import exit_with_result
+from ansible_collections.splunk.itsi.plugins.module_utils.splunk_utils import (
+    build_have_conf,
+    exit_with_result,
+)
 
 
 def _normalize_disabled_value(value):
@@ -254,67 +273,6 @@ def _normalize_disabled_value(value):
     if str(value).lower() in ("true", "1", "yes"):
         return 1
     return 0
-
-
-# Fields to copy directly during canonicalization
-_CANONICAL_FIELDS = (
-    "title",
-    "description",
-    "priority",
-    "split_by_field",
-    "group_severity",
-    "group_status",
-    "group_assignee",
-    "group_title",
-    "group_description",
-    "filter_criteria",
-    "breaking_criteria",
-    "rules",
-)
-
-
-def _canonicalize_policy(payload):
-    """
-    Reduce an object to just the fields we compare/update. Handles both
-    desired (module args) and current (Splunk GET) shapes.
-    """
-    if not isinstance(payload, dict):
-        return {}
-
-    # Unwrap to content if needed
-    if "entry" in payload or "content" in payload:
-        payload = flatten_policy_object(payload)
-
-    out = {}
-
-    # Copy all canonical fields that exist in source
-    for field in _CANONICAL_FIELDS:
-        if field in payload:
-            out[field] = payload[field]
-
-    # Normalize boolean-like disabled field
-    if "disabled" in payload:
-        out["disabled"] = _normalize_disabled_value(payload["disabled"])
-
-    return out
-
-
-def _diff_canonical(desired_canon, current_canon):
-    """Return a shallow diff: {field: (current, desired)} where values differ."""
-    diffs = {}
-    # Only compare fields that are explicitly provided by the user
-    for k in desired_canon.keys():
-        dv = desired_canon.get(k)
-        cv = current_canon.get(k)
-
-        # Special handling for complex objects
-        if k in ("filter_criteria", "breaking_criteria", "rules"):
-            if json.dumps(dv, sort_keys=True) != json.dumps(cv, sort_keys=True):
-                diffs[k] = (cv, dv)
-        elif str(dv) != str(cv):
-            diffs[k] = (cv, dv)
-
-    return diffs
 
 
 def create_aggregation_policy(client, policy_data):
@@ -333,25 +291,18 @@ def create_aggregation_policy(client, policy_data):
     return client.post(BASE_AGGREGATION_POLICY_ENDPOINT, params=params, payload=payload)
 
 
-def update_aggregation_policy(client, policy_id, update_data, current_data):
-    """Update aggregation policy via EMI with is_partial_data=1.
+def update_aggregation_policy(client, policy_id, update_data):
+    """Update aggregation policy via EMI.
 
     Args:
-        current_data: Current policy body (avoids a redundant GET).
+        client: ItsiRequest instance.
+        policy_id: The aggregation policy ID.
+        update_data: The data to update the aggregation policy with.
     """
     path = f"{BASE_AGGREGATION_POLICY_ENDPOINT}/{quote_plus(policy_id)}"
-    params = {"output_mode": "json", "is_partial_data": "1"}
-    payload = {
-        "title": update_data.get("title", current_data.get("title")),
-        "filter_criteria": update_data.get("filter_criteria", current_data.get("filter_criteria", {"condition": "AND", "items": []})),
-        "breaking_criteria": update_data.get("breaking_criteria", current_data.get("breaking_criteria", {"condition": "AND", "items": []})),
-        "group_severity": update_data.get("group_severity", current_data.get("group_severity", "normal")),
-        "rules": update_data.get("rules", current_data.get("rules", [])),
-    }
-    for key, value in update_data.items():
-        if key not in payload:
-            payload[key] = value
-    return client.post(path, params=params, payload=payload)
+    # partial_update is not supported fro this api endpoint
+    params = {"output_mode": "json"}
+    return client.post(path, params=params, payload=update_data)
 
 
 def delete_aggregation_policy(client, policy_id):
@@ -362,12 +313,42 @@ def delete_aggregation_policy(client, policy_id):
 
 
 # ------------------------------------------------------------------
+# Diffing helpers
+# ------------------------------------------------------------------
+
+
+def _dict_diff(want, have):
+    """Return fields from *want* that differ from *have*.
+
+    netcommon's ``utils.dict_diff`` crashes on empty lists (``sort_list``
+    does ``val[0]`` on ``[]``).  ITSI criteria objects legitimately
+    contain ``"items": []``, so we need a safe implementation.
+    """
+    diff = {}
+    for key, desired in want.items():
+        if key not in have:
+            diff[key] = desired
+            continue
+        current = have[key]
+        if isinstance(desired, dict) and isinstance(current, dict):
+            if _dict_diff(desired, current):
+                diff[key] = desired
+        elif desired != current:
+            diff[key] = desired
+    return diff
+
+
+# ------------------------------------------------------------------
 # Business logic
 # ------------------------------------------------------------------
 
 
 def _build_desired_data(params):
-    """Build desired data dictionary from module parameters."""
+    """Build desired data dictionary from module parameters.
+
+    Normalizes ``disabled`` to int (0/1) so the desired state matches the
+    API response type and ``dict_diff`` does not see phantom changes.
+    """
     field_names = (
         "title",
         "description",
@@ -387,6 +368,8 @@ def _build_desired_data(params):
     for field_name in field_names:
         field_value = params.get(field_name)
         if field_value is not None:
+            if field_name == "disabled":
+                field_value = _normalize_disabled_value(field_value)
             desired_data[field_name] = field_value
     additional_fields = params.get("additional_fields", {})
     if additional_fields:
@@ -425,21 +408,23 @@ def _handle_state_present(module, client):
 
     _cur_status, _cur_hdr, current_data = get_result
 
-    current_canon = _canonicalize_policy(current_data)
-    desired_canon = _canonicalize_policy(desired_data)
-    diff_check = _diff_canonical(desired_canon, current_canon)
+    have_conf = build_have_conf(
+        desired_data,
+        current_data,
+        normalizers={"disabled": _normalize_disabled_value},
+    )
+    diff: dict = _dict_diff(desired_data, have_conf)
 
-    if not diff_check:
+    after: dict = dict(current_data)
+    after.update(desired_data)
+
+    if not diff:
         exit_with_result(module, before=current_data, after=current_data)
-
-    diff = {k: v[1] for k, v in diff_check.items()}
-    after = dict(current_data)
-    after.update(desired_canon)
 
     if module.check_mode:
         exit_with_result(module, changed=True, before=current_data, after=after, diff=diff)
 
-    _status, _hdr, body = update_aggregation_policy(client, policy_id, desired_canon, current_data)
+    _status, _hdr, body = update_aggregation_policy(client, policy_id, after)
     exit_with_result(
         module,
         changed=True,

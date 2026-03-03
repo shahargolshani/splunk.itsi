@@ -367,6 +367,26 @@ Examples
         policy_id: "{{ create_result.response._key }}"
         group_severity: "high"
         disabled: false
+        filter_criteria:
+          condition: "OR"
+          items:
+            [
+              {
+                "type": "clause",
+                "config":
+                  {
+                    "items":
+                      [
+                        {
+                          "type": "notable_event_field",
+                          "config":
+                            { "field": "severity", "operator": "<", "value": "6" },
+                        },
+                      ],
+                    "condition": "AND",
+                  },
+              },
+            ]
         state: present
       register: update_result
     # update_result.diff shows fields that changed

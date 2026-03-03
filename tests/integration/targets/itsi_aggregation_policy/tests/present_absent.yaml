@@ -164,6 +164,8 @@
         disabled: "{{ test_aggregation_policy_updated.disabled }}"
         priority: "{{ test_aggregation_policy_updated.priority }}"
         group_severity: "{{ test_aggregation_policy_updated.group_severity }}"
+        filter_criteria: "{{ test_aggregation_policy_updated.filter_criteria }}"
+        breaking_criteria: "{{ test_aggregation_policy_updated.breaking_criteria }}"
         state: present
       register: update_result
 
@@ -189,7 +191,10 @@
       ansible.builtin.assert:
         that:
           - info_after_update.response.description == test_aggregation_policy_updated.description
-        fail_msg: "Info module should return updated aggregation policy with new description"
+          - info_after_update.response.filter_criteria.condition == test_aggregation_policy_updated.filter_criteria.condition
+          - info_after_update.response.filter_criteria["items"] | length == 1
+          - info_after_update.response.filter_criteria["items"][0].type == "clause"
+        fail_msg: "Info module should return updated aggregation policy with new description and filter_criteria"
         success_msg: "Verified: Aggregation policy was updated successfully"
 
     - name: "Step 6 - Debug updated aggregation policy"

@@ -18,8 +18,6 @@ from ansible_collections.splunk.itsi.plugins.module_utils.correlation_search_uti
 # Import module functions for testing
 from ansible_collections.splunk.itsi.plugins.module_utils.itsi_request import ItsiRequest
 from ansible_collections.splunk.itsi.plugins.modules.itsi_correlation_search import (
-    _canonicalize,
-    _diff_canonical,
     _handle_state_present,
     create_correlation_search,
     delete_correlation_search,
@@ -121,133 +119,6 @@ class TestFlattenSearchObject:
         result = flatten_search_object(None)
         assert result["_meta"] == {}
         assert result["raw"] is None
-
-
-class TestCanonicalize:
-    """Tests for _canonicalize helper function."""
-
-    def test_canonicalize_basic_fields(self):
-        """Test canonicalizing basic fields."""
-        payload = {
-            "search": "index=main",
-            "description": "Test",
-            "cron_schedule": "*/5 * * * *",
-            "actions": "itsi_event_generator",
-        }
-        result = _canonicalize(payload)
-        assert result["search"] == "index=main"
-        assert result["description"] == "Test"
-        assert result["cron_schedule"] == "*/5 * * * *"
-        assert result["actions"] == "itsi_event_generator"
-
-    def test_canonicalize_time_fields_dispatch(self):
-        """Test canonicalizing dispatch time fields."""
-        payload = {
-            "dispatch.earliest_time": "-15m",
-            "dispatch.latest_time": "now",
-        }
-        result = _canonicalize(payload)
-        assert result["dispatch.earliest_time"] == "-15m"
-        assert result["dispatch.latest_time"] == "now"
-
-    def test_canonicalize_time_fields_simple(self):
-        """Test canonicalizing simple time fields."""
-        payload = {
-            "earliest_time": "-1h",
-            "latest_time": "now",
-        }
-        result = _canonicalize(payload)
-        assert result["dispatch.earliest_time"] == "-1h"
-        assert result["dispatch.latest_time"] == "now"
-
-    def test_canonicalize_disabled_bool_true(self):
-        """Test canonicalizing disabled=True."""
-        payload = {"disabled": True}
-        result = _canonicalize(payload)
-        assert result["disabled"] == "1"
-
-    def test_canonicalize_disabled_bool_false(self):
-        """Test canonicalizing disabled=False."""
-        payload = {"disabled": False}
-        result = _canonicalize(payload)
-        assert result["disabled"] == "0"
-
-    def test_canonicalize_disabled_string(self):
-        """Test canonicalizing disabled as string."""
-        payload = {"disabled": "1"}
-        result = _canonicalize(payload)
-        assert result["disabled"] == "1"
-
-    def test_canonicalize_non_dict(self):
-        """Test canonicalizing non-dict value."""
-        result = _canonicalize("not a dict")
-        assert result == {}
-
-    def test_canonicalize_none(self):
-        """Test canonicalizing None value."""
-        result = _canonicalize(None)
-        assert result == {}
-
-    def test_canonicalize_with_entry_format(self):
-        """Test canonicalizing Splunk entry format."""
-        result = _canonicalize(SAMPLE_API_RESPONSE)
-        assert result["search"] == "index=main | head 1"
-        assert result["disabled"] == "0"
-
-    def test_canonicalize_empty_time_fields(self):
-        """Test canonicalizing without time fields."""
-        payload = {"search": "test"}
-        result = _canonicalize(payload)
-        assert "dispatch.earliest_time" not in result
-        assert "dispatch.latest_time" not in result
-
-
-class TestDiffCanonical:
-    """Tests for _diff_canonical helper function."""
-
-    def test_diff_no_changes(self):
-        """Test diff with no changes."""
-        desired = {"search": "test", "disabled": "0"}
-        current = {"search": "test", "disabled": "0"}
-        result = _diff_canonical(desired, current)
-        assert result == {}
-
-    def test_diff_with_changes(self):
-        """Test diff with changes."""
-        desired = {"search": "new query", "disabled": "1"}
-        current = {"search": "old query", "disabled": "0"}
-        result = _diff_canonical(desired, current)
-        assert "search" in result
-        assert result["search"] == ("old query", "new query")
-        assert result["disabled"] == ("0", "1")
-
-    def test_diff_only_compares_desired_keys(self):
-        """Test that diff only compares keys in desired."""
-        desired = {"search": "test"}
-        current = {"search": "test", "disabled": "0", "extra": "value"}
-        result = _diff_canonical(desired, current)
-        assert result == {}
-
-    def test_diff_time_fields_none_equal_empty(self):
-        """Test that None and empty string are equal for time fields."""
-        desired = {"dispatch.earliest_time": None}
-        current = {"dispatch.earliest_time": ""}
-        result = _diff_canonical(desired, current)
-        assert result == {}
-
-    def test_diff_time_fields_empty_equal_none(self):
-        """Test that empty string and None are equal for time fields."""
-        desired = {"dispatch.latest_time": ""}
-        current = {"dispatch.latest_time": None}
-        result = _diff_canonical(desired, current)
-        assert result == {}
-
-    def test_diff_string_conversion(self):
-        """Test that values are compared as strings."""
-        desired = {"disabled": 1}
-        current = {"disabled": "1"}
-        result = _diff_canonical(desired, current)
-        assert result == {}
 
 
 class TestNormalizeToList:
@@ -1167,10 +1038,10 @@ class TestMain:
         call_kwargs = mock_module.exit_json.call_args[1]
         data = call_kwargs["after"]
         assert data["search"] == "index=main | head 1"
-        assert data["disabled"] is False
+        assert data["disabled"] == "0"
         assert data["cron_schedule"] == "*/5 * * * *"
-        assert data["earliest_time"] == "-15m"
-        assert data["latest_time"] == "now"
+        assert data["dispatch.earliest_time"] == "-15m"
+        assert data["dispatch.latest_time"] == "now"
         assert data["description"] == "Complete test search"
         assert data["actions"] == "itsi_event_generator"
         assert data["priority"] == "high"

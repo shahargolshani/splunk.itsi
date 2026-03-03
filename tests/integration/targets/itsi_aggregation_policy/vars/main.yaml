@@ -24,3 +24,26 @@ test_aggregation_policy_updated:
   disabled: true
   priority: 8
   group_severity: "high"
+  filter_criteria:
+    condition: "OR"
+    items:
+      [
+        {
+          "type": "clause",
+          "config":
+            {
+              "items":
+                [
+                  {
+                    "type": "notable_event_field",
+                    "config":
+                      { "field": "severity", "operator": "<", "value": "6" },
+                  },
+                ],
+              "condition": "AND",
+            },
+        },
+      ]
+  breaking_criteria:
+    condition: "AND"
+    items: []

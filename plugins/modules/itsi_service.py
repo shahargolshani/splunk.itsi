@@ -155,13 +155,19 @@ response:
 
 import json
 import re
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Union
 from urllib.parse import quote_plus
 
 from ansible.module_utils.basic import AnsibleModule
 from ansible.module_utils.connection import Connection
+from ansible_collections.ansible.netcommon.plugins.module_utils.network.common import (
+    utils,
+)
 from ansible_collections.splunk.itsi.plugins.module_utils.itsi_request import ItsiRequest
-from ansible_collections.splunk.itsi.plugins.module_utils.splunk_utils import exit_with_result
+from ansible_collections.splunk.itsi.plugins.module_utils.splunk_utils import (
+    build_have_conf,
+    exit_with_result,
+)
 
 BASE = "servicesNS/nobody/SA-ITOA/itoa_interface/service"
 TEMPLATE_BASE = "servicesNS/nobody/SA-ITOA/itoa_interface/base_service_template"
@@ -272,172 +278,24 @@ def _int_bool(v: Any) -> Any:
     return v
 
 
-def _equal_service_tags(desired: dict, current: dict) -> bool:
-    """Order-insensitive service_tags comparison.
+def _normalize_service_tags(val: Any) -> Any:
+    """Normalize service_tags for comparison.
 
-    Only compares the 'tags' array (user-assigned). The 'template_tags' array is
-    inherited from the service template and managed by ITSI, so we don't compare it
-    to avoid false positives due to ITSI's async processing of template inheritance.
-
-    Args:
-        desired: Desired service_tags from module parameters.
-        current: Current service_tags from API response.
-
-    Returns:
-        True if service_tags are equivalent (no update needed), False otherwise.
-    """
-    # Normalize None/empty to empty dict for comparison
-    desired = desired or {}
-    current = current or {}
-
-    # If both are empty/None, they're equal
-    if not desired and not current:
-        return True
-
-    # Compare only 'tags' (user-assigned) - order insensitive
-    # 'template_tags' are inherited from template and managed by ITSI
-    desired_tags = set(desired.get("tags") or [])
-    current_tags = set(current.get("tags") or [])
-
-    if desired_tags != current_tags:
-        return False
-
-    # Compare any other keys in service_tags (excluding template_tags)
-    other_keys = (set(desired.keys()) | set(current.keys())) - {"tags", "template_tags"}
-    for key in other_keys:
-        if desired.get(key) != current.get(key):
-            return False
-
-    return True
-
-
-def _compare_scalar_fields(
-    current_doc: dict,
-    desired_doc: dict,
-) -> Tuple[Dict[str, Any], List[str]]:
-    """Compare scalar fields (title, description, sec_grp).
+    Sorts the ``tags`` array for order-insensitive comparison and strips
+    ``template_tags`` which are ITSI-managed and should not affect diff.
 
     Args:
-        current_doc: Current document from API.
-        desired_doc: Desired document from module params.
+        val: service_tags value from API or desired payload.
 
     Returns:
-        Tuple of (patch dict, list of changed field names).
+        Normalized service_tags dict, or the original value if not a dict.
     """
-    patch: Dict[str, Any] = {}
-    changed: List[str] = []
-    for field in ("title", "description", "sec_grp"):
-        if field in desired_doc and desired_doc.get(field) != current_doc.get(field):
-            patch[field] = desired_doc[field]
-            changed.append(field)
-    return patch, changed
-
-
-def _compare_enabled(
-    current_doc: dict,
-    desired_doc: dict,
-) -> Tuple[Dict[str, Any], List[str]]:
-    """Compare enabled field with 0/1 integer semantics.
-
-    Args:
-        current_doc: Current document from API.
-        desired_doc: Desired document from module params.
-
-    Returns:
-        Tuple of (patch dict, list of changed field names).
-    """
-    patch: Dict[str, Any] = {}
-    changed: List[str] = []
-    if "enabled" in desired_doc:
-        want = _int_bool(desired_doc.get("enabled"))
-        have = _int_bool(current_doc.get("enabled"))
-        if want != have:
-            patch["enabled"] = want
-            changed.append("enabled")
-    return patch, changed
-
-
-def _compare_service_tags_field(
-    current_doc: dict,
-    desired_doc: dict,
-) -> Tuple[Dict[str, Any], List[str]]:
-    """Compare service_tags field with order-insensitive comparison.
-
-    Args:
-        current_doc: Current document from API.
-        desired_doc: Desired document from module params.
-
-    Returns:
-        Tuple of (patch dict, list of changed field names).
-    """
-    patch: Dict[str, Any] = {}
-    changed: List[str] = []
-    if "service_tags" in desired_doc and not _equal_service_tags(
-        desired_doc.get("service_tags"),
-        current_doc.get("service_tags"),
-    ):
-        patch["service_tags"] = desired_doc["service_tags"]
-        changed.append("service_tags")
-    return patch, changed
-
-
-def _compare_entity_rules(
-    current_doc: dict,
-    desired_doc: dict,
-) -> Tuple[Dict[str, Any], List[str]]:
-    """Compare entity_rules field with raw comparison.
-
-    Args:
-        current_doc: Current document from API.
-        desired_doc: Desired document from module params.
-
-    Returns:
-        Tuple of (patch dict, list of changed field names).
-    """
-    patch: Dict[str, Any] = {}
-    changed: List[str] = []
-    if "entity_rules" in desired_doc and desired_doc.get("entity_rules") != current_doc.get("entity_rules"):
-        patch["entity_rules"] = desired_doc["entity_rules"]
-        changed.append("entity_rules")
-    return patch, changed
-
-
-def _compare_extra_fields(
-    current_doc: dict,
-    desired_doc: dict,
-) -> Tuple[Dict[str, Any], List[str]]:
-    """Compare extra (unmanaged) fields in desired and detect removed fields.
-
-    Args:
-        current_doc: Current document from API.
-        desired_doc: Desired document from module params.
-
-    Returns:
-        Tuple of (patch dict, list of changed field names).
-    """
-    patch: Dict[str, Any] = {}
-    changed: List[str] = []
-
-    # Check for new or modified extra fields
-    for field, value in desired_doc.items():
-        if field in MANAGED_FIELDS:
-            continue
-        if current_doc.get(field) != value:
-            patch[field] = value
-            changed.append(field)
-
-    # Check for removed extra fields (present in current but not in desired)
-    for field in current_doc.keys():
-        if field in MANAGED_FIELDS:
-            continue
-        # Skip internal fields that start with underscore
-        if field.startswith("_"):
-            continue
-        if field not in desired_doc and current_doc.get(field) is not None:
-            patch[field] = None
-            changed.append(field)
-
-    return patch, changed
+    if not isinstance(val, dict):
+        return val
+    out = {k: v for k, v in val.items() if k != "template_tags"}
+    if "tags" in out and isinstance(out["tags"], list):
+        out["tags"] = sorted(out["tags"])
+    return out
 
 
 def _desired_payload(params: Dict[str, Any]) -> Dict[str, Any]:
@@ -458,62 +316,14 @@ def _desired_payload(params: Dict[str, Any]) -> Dict[str, Any]:
     for k in ("description", "sec_grp", "entity_rules", "base_service_template_id"):
         if params.get(k) is not None:
             out[k] = params[k]
-    # Wrap service_tags list into API format {"tags": [...]}
     if params.get("service_tags") is not None:
-        out["service_tags"] = {"tags": params["service_tags"]}
+        out["service_tags"] = {"tags": sorted(params["service_tags"])}
     # ITSI API requires enabled as integer (0/1), not boolean
     if params.get("enabled") is not None:
         out["enabled"] = _int_bool(params["enabled"])
     extra = params.get("extra") or {}
     out.update(extra)
     return out
-
-
-def _compute_patch(current_doc: dict, desired_doc: dict) -> Tuple[dict, list]:
-    """Compare selected fields and build minimal patch.
-
-    Args:
-        current_doc: Current document from API.
-        desired_doc: Desired document from module params.
-
-    Returns:
-        Tuple of (patch dict, list of changed field names).
-
-    Notes:
-        - enabled compared as 0/1 (ITSI requires integer)
-        - service_tags: only 'tags' array is compared (template_tags are ITSI-managed)
-        - entity_rules compared raw
-        - base_service_template_id is NOT included (only used during creation)
-    """
-    patch: Dict[str, Any] = {}
-    changed: List[str] = []
-
-    # Compare scalar fields (title, description, sec_grp)
-    scalar_patch, scalar_changed = _compare_scalar_fields(current_doc, desired_doc)
-    patch.update(scalar_patch)
-    changed.extend(scalar_changed)
-
-    # Compare enabled field with integer semantics
-    enabled_patch, enabled_changed = _compare_enabled(current_doc, desired_doc)
-    patch.update(enabled_patch)
-    changed.extend(enabled_changed)
-
-    # Compare service_tags with order-insensitive comparison
-    tags_patch, tags_changed = _compare_service_tags_field(current_doc, desired_doc)
-    patch.update(tags_patch)
-    changed.extend(tags_changed)
-
-    # Compare entity_rules with raw comparison
-    rules_patch, rules_changed = _compare_entity_rules(current_doc, desired_doc)
-    patch.update(rules_patch)
-    changed.extend(rules_changed)
-
-    # Compare extra (unmanaged) fields
-    extra_patch, extra_changed = _compare_extra_fields(current_doc, desired_doc)
-    patch.update(extra_patch)
-    changed.extend(extra_changed)
-
-    return patch, changed
 
 
 def _get_by_key(
@@ -584,40 +394,20 @@ def _update(
     client: ItsiRequest,
     key: str,
     patch: Dict[str, Any],
-    current_doc: Optional[Dict[str, Any]] = None,
 ) -> Optional[Dict[str, Any]]:
-    """Update a service by key.
+    """Update a service by key using partial update.
 
     Args:
         client: ItsiRequest instance.
         key: Service _key.
         patch: Dict of fields to update.
-        current_doc: Optional current document to merge patch into for full update.
 
     Returns:
         Response body dict, or None if not found.
     """
-    if current_doc:
-        # Full object update: merge patch into current doc
-        # This is more reliable for ITSI as partial updates don't always persist
-        payload = {**current_doc, **patch, "_key": key}
-        # Remove system/internal fields that shouldn't be sent in updates
-        for skip_field in (
-            "_user",
-            "_version",
-            "mod_source",
-            "mod_timestamp",
-            "object_type",
-            "permissions",
-            "kpis",
-            "identifying_name",
-            "is_healthscore_calculate_by_entity_enabled",
-        ):
-            payload.pop(skip_field, None)
-    else:
-        # Partial update fallback
-        payload = {"_key": key, **patch}
-    api_result = client.post(f"{BASE}/{quote_plus(key)}", payload=payload)
+    params = {"is_partial_data": "1"}
+    payload = {"_key": key, **patch}
+    api_result = client.post(f"{BASE}/{quote_plus(key)}", params=params, payload=payload)
     if api_result is None:
         return None
     _status, _headers, body = api_result
@@ -752,28 +542,37 @@ def _handle_update(
     if "title" not in desired and current.get("title"):
         desired["title"] = current["title"]
 
-    patch, changed_fields = _compute_patch(current, desired)
+    # base_service_template_id is only used during creation
+    desired.pop("base_service_template_id", None)
 
-    if not patch:
+    have_conf = build_have_conf(
+        desired,
+        current,
+        normalizers={"enabled": _int_bool, "service_tags": _normalize_service_tags},
+    )
+    want_conf: dict = utils.remove_empties(desired)
+    diff: dict = utils.dict_diff(have_conf, want_conf)
+
+    after: dict = dict(current)
+    after.update(want_conf)
+
+    if not diff:
         exit_with_result(module, before=current, after=current)
 
     # ITSI requires title in UPDATE requests even if unchanged
-    if "title" not in patch and current.get("title"):
-        patch["title"] = current["title"]
-
-    after = dict(current)
-    after.update(patch)
+    if "title" not in want_conf and current.get("title"):
+        want_conf["title"] = current["title"]
 
     if module.check_mode:
-        exit_with_result(module, changed=True, before=current, after=after, diff=patch)
+        exit_with_result(module, changed=True, before=current, after=after, diff=diff)
 
-    body = _update(client, current.get("_key", key), patch, current_doc=current)
+    body = _update(client, current.get("_key", key), want_conf)
     exit_with_result(
         module,
         changed=True,
         before=current,
         after=after,
-        diff=patch,
+        diff=diff,
         response=body or {},
     )
 

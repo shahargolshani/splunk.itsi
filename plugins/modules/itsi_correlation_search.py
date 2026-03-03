@@ -193,30 +193,22 @@ response:
 from ansible.module_utils.basic import AnsibleModule
 from ansible.module_utils.connection import Connection
 from ansible.module_utils.six.moves.urllib.parse import quote, quote_plus
+from ansible_collections.ansible.netcommon.plugins.module_utils.network.common import (
+    utils,
+)
 from ansible_collections.splunk.itsi.plugins.module_utils.correlation_search_utils import (
     BASE_EVENT_MGMT,
-    flatten_search_object,
     get_correlation_search,
 )
 from ansible_collections.splunk.itsi.plugins.module_utils.itsi_request import ItsiRequest
-from ansible_collections.splunk.itsi.plugins.module_utils.splunk_utils import exit_with_result
+from ansible_collections.splunk.itsi.plugins.module_utils.splunk_utils import (
+    build_have_conf,
+    exit_with_result,
+)
 
 # Field name constants for dispatch time settings
 DISPATCH_EARLIEST_TIME = "dispatch.earliest_time"
 DISPATCH_LATEST_TIME = "dispatch.latest_time"
-
-# ---- Tiny idempotency & shape-refactor helpers ---------------------------------
-COMPARE_FIELDS = [
-    "search",
-    "disabled",
-    "cron_schedule",
-    "earliest_time",
-    "latest_time",
-    "description",
-    "actions",
-    DISPATCH_EARLIEST_TIME,
-    DISPATCH_LATEST_TIME,
-]
 
 
 def _normalize_disabled(value) -> str:
@@ -224,54 +216,6 @@ def _normalize_disabled(value) -> str:
     if isinstance(value, bool):
         return "1" if value else "0"
     return str(value)
-
-
-def _canonicalize(payload):
-    """
-    Reduce an object to just the fields we compare/update. Handles both
-    desired (module args) and current (Splunk GET) shapes.
-    """
-    if not isinstance(payload, dict):
-        return {}
-    # Unwrap to content if needed
-    if "entry" in payload or "content" in payload:
-        payload = flatten_search_object(payload)
-
-    out = {}
-    # Map time fields (dispatch.* or short form)
-    time_field_map = [
-        (DISPATCH_EARLIEST_TIME, "earliest_time"),
-        (DISPATCH_LATEST_TIME, "latest_time"),
-    ]
-    for dispatch_key, short_key in time_field_map:
-        if dispatch_key in payload or short_key in payload:
-            out[dispatch_key] = payload.get(dispatch_key, payload.get(short_key))
-
-    # Copy passthrough fields
-    for k in ("search", "description", "cron_schedule", "actions"):
-        if k in payload:
-            out[k] = payload[k]
-
-    # Normalize boolean-like disabled field
-    if "disabled" in payload:
-        out["disabled"] = _normalize_disabled(payload["disabled"])
-
-    return out
-
-
-def _diff_canonical(desired_canon, current_canon):
-    """Return a shallow diff: {field: (current, desired)} where values differ."""
-    diffs = {}
-    # Only compare fields that are explicitly provided by the user
-    for k in desired_canon.keys():
-        dv = desired_canon.get(k)
-        cv = current_canon.get(k)
-        # treat None and "" as equal for time fields
-        if k.startswith("dispatch.") and (dv in (None, "") and cv in (None, "")):
-            continue
-        if str(dv) != str(cv):
-            diffs[k] = (cv, dv)
-    return diffs
 
 
 def create_correlation_search(client, search_data):
@@ -328,15 +272,26 @@ def _should_set_is_scheduled(existing_flat: dict, diff: dict) -> bool:
 
 
 def _build_desired_data(params: dict, search_identifier: str) -> dict:
-    """Build desired data dictionary from module parameters."""
+    """Build desired data dictionary from module parameters.
+
+    Normalizes types to match the API response format so ``dict_diff``
+    does not see phantom changes:
+    - ``disabled``: bool -> string ``"0"``/``"1"``
+    - ``earliest_time`` -> ``dispatch.earliest_time``
+    - ``latest_time`` -> ``dispatch.latest_time``
+    """
     desired_data = {"name": search_identifier}
     if params.get("search"):
         desired_data["search"] = params["search"]
     if params.get("disabled") is not None:
-        desired_data["disabled"] = params["disabled"]
-    for field in ("cron_schedule", "earliest_time", "latest_time", "description", "actions"):
+        desired_data["disabled"] = _normalize_disabled(params["disabled"])
+    for field in ("cron_schedule", "description", "actions"):
         if params.get(field):
             desired_data[field] = params[field]
+    if params.get("earliest_time"):
+        desired_data[DISPATCH_EARLIEST_TIME] = params["earliest_time"]
+    if params.get("latest_time"):
+        desired_data[DISPATCH_LATEST_TIME] = params["latest_time"]
     if params.get("additional_fields"):
         desired_data.update(params["additional_fields"])
     return desired_data
@@ -374,33 +329,33 @@ def _handle_state_present(module, client, params: dict):
 
     # --- Update ---
     _cur_status, _cur_hdr, cur_obj = current
-    existing_flat = flatten_search_object(cur_obj) if isinstance(cur_obj, dict) else {}
 
-    current_c = _canonicalize(existing_flat)
-    desired_c = _canonicalize(desired_data)
+    have_conf = build_have_conf(
+        desired_data,
+        cur_obj,
+        normalizers={"disabled": _normalize_disabled},
+        exclude_keys={"name"},
+    )
+    want_conf: dict = {k: v for k, v in utils.remove_empties(desired_data).items() if k != "name"}
+    diff: dict = utils.dict_diff(have_conf, want_conf)
 
-    complete_desired = dict(current_c)
-    complete_desired.update(desired_c)
-    diff_check = _diff_canonical(complete_desired, current_c)
+    after: dict = dict(cur_obj)
+    after.update(want_conf)
 
-    if not diff_check:
-        exit_with_result(module, before=existing_flat, after=existing_flat)
-
-    diff = {k: v[1] for k, v in diff_check.items()}
-    after = dict(existing_flat)
-    after.update(desired_c)
+    if not diff:
+        exit_with_result(module, before=cur_obj, after=cur_obj)
 
     if module.check_mode:
-        exit_with_result(module, changed=True, before=existing_flat, after=after, diff=diff)
+        exit_with_result(module, changed=True, before=cur_obj, after=after, diff=diff)
 
-    update_payload = dict(desired_c)
-    if _should_set_is_scheduled(existing_flat, diff_check):
+    update_payload = dict(want_conf)
+    if _should_set_is_scheduled(cur_obj, diff):
         update_payload["is_scheduled"] = "1"
     _status, _hdr, body = update_correlation_search(client, search_identifier, update_payload)
     exit_with_result(
         module,
         changed=True,
-        before=existing_flat,
+        before=cur_obj,
         after=after,
         diff=diff,
         response=body,
@@ -423,10 +378,9 @@ def _handle_absent_state(module, client, params: dict):
         exit_with_result(module)
 
     _cur_status, _cur_hdr, cur_obj = current
-    existing_flat = flatten_search_object(cur_obj) if isinstance(cur_obj, dict) else {}
 
     if module.check_mode:
-        exit_with_result(module, changed=True, before=existing_flat, diff=existing_flat)
+        exit_with_result(module, changed=True, before=cur_obj, diff=cur_obj)
 
     response: dict = {}
     del_result = delete_correlation_search(client, search_identifier, use_name_encoding=use_name_encoding)
@@ -436,8 +390,8 @@ def _handle_absent_state(module, client, params: dict):
     exit_with_result(
         module,
         changed=True,
-        before=existing_flat,
-        diff=existing_flat,
+        before=cur_obj,
+        diff=cur_obj,
         response=response,
     )
 

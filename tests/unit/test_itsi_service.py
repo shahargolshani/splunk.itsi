@@ -12,16 +12,15 @@ import pytest
 # Import module functions for testing
 from ansible_collections.splunk.itsi.plugins.module_utils.itsi_request import ItsiRequest
 from ansible_collections.splunk.itsi.plugins.modules.itsi_service import (
-    _compute_patch,
     _create,
     _delete,
     _desired_payload,
     _discover_current,
-    _equal_service_tags,
     _find_by_title,
     _get_by_key,
     _int_bool,
     _looks_like_uuid,
+    _normalize_service_tags,
     _resolve_base_service_template_id,
     _update,
     main,
@@ -148,75 +147,36 @@ class TestIntBool:
         assert _int_bool(-1) == -1
 
 
-class TestEqualServiceTags:
-    """Tests for _equal_service_tags helper function."""
+class TestNormalizeServiceTags:
+    """Tests for _normalize_service_tags helper function."""
 
-    def test_both_empty(self):
-        """Test both None are equal."""
-        assert _equal_service_tags(None, None) is True
+    def test_sorts_tags(self):
+        """Test that tags are sorted."""
+        val = {"tags": ["prod", "alpha", "beta"]}
+        result = _normalize_service_tags(val)
+        assert result["tags"] == ["alpha", "beta", "prod"]
 
-    def test_both_empty_dict(self):
-        """Test both empty dicts are equal."""
-        assert _equal_service_tags({}, {}) is True
+    def test_strips_template_tags(self):
+        """Test that template_tags are stripped."""
+        val = {"tags": ["prod"], "template_tags": ["inherited"]}
+        result = _normalize_service_tags(val)
+        assert "template_tags" not in result
+        assert result["tags"] == ["prod"]
 
-    def test_none_vs_empty_dict(self):
-        """Test None equals empty dict."""
-        assert _equal_service_tags(None, {}) is True
-        assert _equal_service_tags({}, None) is True
+    def test_non_dict_passthrough(self):
+        """Test non-dict values pass through unchanged."""
+        assert _normalize_service_tags(None) is None
+        assert _normalize_service_tags("string") == "string"
 
-    def test_equal_tags(self):
-        """Test equal tags."""
-        desired = {"tags": ["prod", "payments"]}
-        current = {"tags": ["prod", "payments"]}
-        assert _equal_service_tags(desired, current) is True
+    def test_empty_dict(self):
+        """Test empty dict returns empty dict."""
+        assert _normalize_service_tags({}) == {}
 
-    def test_equal_tags_different_order(self):
-        """Test equal tags in different order."""
-        desired = {"tags": ["payments", "prod"]}
-        current = {"tags": ["prod", "payments"]}
-        assert _equal_service_tags(desired, current) is True
-
-    def test_different_tags(self):
-        """Test different tags."""
-        desired = {"tags": ["prod"]}
-        current = {"tags": ["prod", "payments"]}
-        assert _equal_service_tags(desired, current) is False
-
-    def test_template_tags_ignored(self):
-        """Test template_tags are ignored in comparison."""
-        desired = {"tags": ["prod"]}
-        current = {"tags": ["prod"], "template_tags": ["inherited", "from-template"]}
-        assert _equal_service_tags(desired, current) is True
-
-    def test_only_template_tags_differ(self):
-        """Test only template_tags differ (should be equal)."""
-        desired = {"tags": ["prod"], "template_tags": []}
-        current = {"tags": ["prod"], "template_tags": ["inherited"]}
-        assert _equal_service_tags(desired, current) is True
-
-    def test_desired_empty_current_has_tags(self):
-        """Test desired empty but current has tags."""
-        desired = {}
-        current = {"tags": ["prod"]}
-        assert _equal_service_tags(desired, current) is False
-
-    def test_desired_has_tags_current_empty(self):
-        """Test desired has tags but current is empty."""
-        desired = {"tags": ["prod"]}
-        current = {}
-        assert _equal_service_tags(desired, current) is False
-
-    def test_other_keys_equal(self):
-        """Test other keys in service_tags are compared."""
-        desired = {"tags": ["prod"], "custom_key": "value"}
-        current = {"tags": ["prod"], "custom_key": "value"}
-        assert _equal_service_tags(desired, current) is True
-
-    def test_other_keys_differ(self):
-        """Test other keys in service_tags that differ."""
-        desired = {"tags": ["prod"], "custom_key": "value1"}
-        current = {"tags": ["prod"], "custom_key": "value2"}
-        assert _equal_service_tags(desired, current) is False
+    def test_preserves_other_keys(self):
+        """Test other keys are preserved."""
+        val = {"tags": ["b", "a"], "custom_key": "value"}
+        result = _normalize_service_tags(val)
+        assert result == {"tags": ["a", "b"], "custom_key": "value"}
 
 
 class TestDesiredPayload:
@@ -254,10 +214,10 @@ class TestDesiredPayload:
         assert result["base_service_template_id"] == "template-id"
 
     def test_service_tags_wrapped(self):
-        """Test service_tags list is wrapped in dict."""
+        """Test service_tags list is wrapped in dict and sorted."""
         params = {"service_tags": ["prod", "payments"]}
         result = _desired_payload(params)
-        assert result["service_tags"] == {"tags": ["prod", "payments"]}
+        assert result["service_tags"] == {"tags": ["payments", "prod"]}
 
     def test_enabled_true(self):
         """Test enabled True becomes 1."""
@@ -318,132 +278,6 @@ class TestDesiredPayload:
         assert result["service_tags"] == {"tags": ["tag1"]}
         assert result["base_service_template_id"] == "tmpl-id"
         assert result["priority"] == "high"
-
-
-class TestComputePatch:
-    """Tests for _compute_patch helper function."""
-
-    def test_no_changes(self):
-        """Test no changes returns empty patch."""
-        current = {"title": "svc", "enabled": 1, "description": "desc"}
-        desired = {"title": "svc", "enabled": 1, "description": "desc"}
-        patch, changed = _compute_patch(current, desired)
-        assert patch == {}
-        assert changed == []
-
-    def test_title_change(self):
-        """Test title change detected."""
-        current = {"title": "old-name"}
-        desired = {"title": "new-name"}
-        patch, changed = _compute_patch(current, desired)
-        assert patch["title"] == "new-name"
-        assert "title" in changed
-
-    def test_description_change(self):
-        """Test description change detected."""
-        current = {"description": "old desc"}
-        desired = {"description": "new desc"}
-        patch, changed = _compute_patch(current, desired)
-        assert patch["description"] == "new desc"
-        assert "description" in changed
-
-    def test_sec_grp_change(self):
-        """Test sec_grp change detected."""
-        current = {"sec_grp": "team-a"}
-        desired = {"sec_grp": "team-b"}
-        patch, changed = _compute_patch(current, desired)
-        assert patch["sec_grp"] == "team-b"
-        assert "sec_grp" in changed
-
-    def test_enabled_change_bool_to_int(self):
-        """Test enabled change with bool vs int."""
-        current = {"enabled": 0}
-        desired = {"enabled": 1}
-        patch, changed = _compute_patch(current, desired)
-        assert patch["enabled"] == 1
-        assert "enabled" in changed
-
-    def test_enabled_same_as_bool(self):
-        """Test enabled True equals 1."""
-        current = {"enabled": 1}
-        desired = {"enabled": True}
-        patch, changed = _compute_patch(current, desired)
-        # Should be no change since True == 1 after normalization
-        assert "enabled" not in patch
-        assert "enabled" not in changed
-
-    def test_service_tags_change(self):
-        """Test service_tags change detected."""
-        current = {"service_tags": {"tags": ["old"]}}
-        desired = {"service_tags": {"tags": ["new"]}}
-        patch, changed = _compute_patch(current, desired)
-        assert patch["service_tags"] == {"tags": ["new"]}
-        assert "service_tags" in changed
-
-    def test_service_tags_no_change_different_order(self):
-        """Test service_tags same with different order."""
-        current = {"service_tags": {"tags": ["b", "a"]}}
-        desired = {"service_tags": {"tags": ["a", "b"]}}
-        patch, changed = _compute_patch(current, desired)
-        assert "service_tags" not in patch
-
-    def test_entity_rules_change(self):
-        """Test entity_rules change detected."""
-        current = {"entity_rules": []}
-        desired = {"entity_rules": [{"rule_condition": "AND", "rule_items": []}]}
-        patch, changed = _compute_patch(current, desired)
-        assert "entity_rules" in patch
-        assert "entity_rules" in changed
-
-    def test_extra_field_added(self):
-        """Test extra field added is detected."""
-        current = {"title": "svc"}
-        desired = {"title": "svc", "custom_field": "value"}
-        patch, changed = _compute_patch(current, desired)
-        assert patch["custom_field"] == "value"
-        assert "custom_field" in changed
-
-    def test_extra_field_changed(self):
-        """Test extra field change detected."""
-        current = {"title": "svc", "custom": "old"}
-        desired = {"title": "svc", "custom": "new"}
-        patch, changed = _compute_patch(current, desired)
-        assert patch["custom"] == "new"
-        assert "custom" in changed
-
-    def test_base_service_template_id_ignored(self):
-        """Test base_service_template_id is not in patch (creation only)."""
-        current = {"title": "svc", "base_service_template_id": "old"}
-        desired = {"title": "svc", "base_service_template_id": "new"}
-        patch, changed = _compute_patch(current, desired)
-        # base_service_template_id should be in managed set and ignored
-        assert "base_service_template_id" not in patch
-
-    def test_system_fields_ignored(self):
-        """Test system fields like kpis, permissions are ignored."""
-        current = {"title": "svc", "kpis": [{"id": "kpi1"}], "permissions": {"read": "*"}}
-        desired = {"title": "svc"}
-        patch, changed = _compute_patch(current, desired)
-        assert "kpis" not in patch
-        assert "permissions" not in patch
-
-    def test_underscore_fields_ignored(self):
-        """Test fields starting with underscore are ignored."""
-        current = {"title": "svc", "_version": "123", "_user": "admin"}
-        desired = {"title": "svc"}
-        patch, changed = _compute_patch(current, desired)
-        assert "_version" not in patch
-        assert "_user" not in patch
-
-    def test_multiple_changes(self):
-        """Test multiple changes at once."""
-        current = {"title": "old", "enabled": 0, "description": "old desc"}
-        desired = {"title": "new", "enabled": 1, "description": "new desc"}
-        patch, changed = _compute_patch(current, desired)
-        assert patch["title"] == "new"
-        assert patch["enabled"] == 1
-        assert patch["description"] == "new desc"
-        assert len(changed) == 3
 
 
 class TestGetByKey:
@@ -574,54 +408,25 @@ class TestCreate:
 class TestUpdate:
     """Tests for _update helper function."""
 
-    def test_update_partial(self):
-        """Test partial update."""
+    def test_update_sends_patch_with_key(self):
+        """Test update sends patch with _key in payload."""
         mock_conn = make_mock_conn(200, json.dumps({"_key": "test"}))
 
         _update(ItsiRequest(mock_conn, _mock_module()), "test-key", {"enabled": 0})
 
         call_args = mock_conn.send_request.call_args
-        # Module calls: conn.send_request(path, method=method, body=body)
         sent_payload = json.loads(call_args.kwargs["body"])
         assert sent_payload["_key"] == "test-key"
         assert sent_payload["enabled"] == 0
 
-    def test_update_with_current_doc(self):
-        """Test update merges with current doc."""
+    def test_update_uses_partial_data(self):
+        """Test update passes is_partial_data=1 parameter."""
         mock_conn = make_mock_conn(200, json.dumps({"_key": "test"}))
 
-        current = {"title": "svc", "enabled": 1, "description": "old"}
-        patch = {"description": "new"}
-        _update(ItsiRequest(mock_conn, _mock_module()), "test-key", patch, current_doc=current)
+        _update(ItsiRequest(mock_conn, _mock_module()), "test-key", {"enabled": 0})
 
         call_args = mock_conn.send_request.call_args
-        # Module calls: conn.send_request(path, method=method, body=body)
-        sent_payload = json.loads(call_args.kwargs["body"])
-        assert sent_payload["title"] == "svc"
-        assert sent_payload["enabled"] == 1
-        assert sent_payload["description"] == "new"
-        assert sent_payload["_key"] == "test-key"
-
-    def test_update_removes_system_fields(self):
-        """Test update removes system fields from payload."""
-        mock_conn = make_mock_conn(200, "{}")
-
-        current = {
-            "title": "svc",
-            "_user": "admin",
-            "_version": "123",
-            "kpis": [{"id": "kpi1"}],
-            "permissions": {"read": "*"},
-        }
-        _update(ItsiRequest(mock_conn, _mock_module()), "key", {"title": "svc"}, current_doc=current)
-
-        call_args = mock_conn.send_request.call_args
-        # Module calls: conn.send_request(path, method=method, body=body)
-        sent_payload = json.loads(call_args.kwargs["body"])
-        assert "_user" not in sent_payload
-        assert "_version" not in sent_payload
-        assert "kpis" not in sent_payload
-        assert "permissions" not in sent_payload
+        assert "is_partial_data=1" in call_args[0][0]
 
 
 class TestDelete:

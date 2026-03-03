@@ -19,8 +19,6 @@ from ansible_collections.splunk.itsi.plugins.module_utils.itsi_request import It
 
 # Import module functions for testing
 from ansible_collections.splunk.itsi.plugins.modules.itsi_aggregation_policy import (
-    _canonicalize_policy,
-    _diff_canonical,
     create_aggregation_policy,
     delete_aggregation_policy,
     main,
@@ -151,166 +149,6 @@ class TestFlattenPolicyObject:
         assert result is None
 
 
-class TestCanonicalizePolicy:
-    """Tests for _canonicalize_policy helper function."""
-
-    def test_canonicalize_basic_fields(self):
-        """Test canonicalizing basic fields."""
-        payload = {
-            "title": "Test Policy",
-            "description": "Test description",
-            "priority": 5,
-            "group_severity": "high",
-        }
-        result = _canonicalize_policy(payload)
-        assert result["title"] == "Test Policy"
-        assert result["description"] == "Test description"
-        assert result["priority"] == 5
-        assert result["group_severity"] == "high"
-
-    def test_canonicalize_all_supported_fields(self):
-        """Test canonicalizing all supported fields."""
-        payload = {
-            "title": "Test",
-            "description": "Desc",
-            "priority": 1,
-            "split_by_field": "host",
-            "group_severity": "medium",
-            "group_status": "new",
-            "group_assignee": "admin",
-            "group_title": "%title%",
-            "group_description": "%description%",
-        }
-        result = _canonicalize_policy(payload)
-        assert len(result) == 9
-
-    def test_canonicalize_complex_fields(self):
-        """Test canonicalizing complex fields."""
-        payload = {
-            "filter_criteria": {"condition": "AND", "items": [{"field": "test"}]},
-            "breaking_criteria": {"condition": "OR", "items": []},
-            "rules": [{"name": "rule1"}],
-        }
-        result = _canonicalize_policy(payload)
-        assert result["filter_criteria"]["condition"] == "AND"
-        assert result["breaking_criteria"]["condition"] == "OR"
-        assert len(result["rules"]) == 1
-
-    def test_canonicalize_disabled_bool_true(self):
-        """Test canonicalizing disabled=True."""
-        payload = {"disabled": True}
-        result = _canonicalize_policy(payload)
-        assert result["disabled"] == 1
-
-    def test_canonicalize_disabled_bool_false(self):
-        """Test canonicalizing disabled=False."""
-        payload = {"disabled": False}
-        result = _canonicalize_policy(payload)
-        assert result["disabled"] == 0
-
-    def test_canonicalize_disabled_string_one(self):
-        """Test canonicalizing disabled='1'."""
-        payload = {"disabled": "1"}
-        result = _canonicalize_policy(payload)
-        assert result["disabled"] == 1
-
-    def test_canonicalize_disabled_string_zero(self):
-        """Test canonicalizing disabled='0'."""
-        payload = {"disabled": "0"}
-        result = _canonicalize_policy(payload)
-        assert result["disabled"] == 0
-
-    def test_canonicalize_disabled_string_true(self):
-        """Test canonicalizing disabled='true'."""
-        payload = {"disabled": "true"}
-        result = _canonicalize_policy(payload)
-        assert result["disabled"] == 1
-
-    def test_canonicalize_disabled_string_false(self):
-        """Test canonicalizing disabled='false'."""
-        payload = {"disabled": "false"}
-        result = _canonicalize_policy(payload)
-        assert result["disabled"] == 0
-
-    def test_canonicalize_non_dict(self):
-        """Test canonicalizing non-dict returns empty dict."""
-        result = _canonicalize_policy("not a dict")
-        assert result == {}
-
-    def test_canonicalize_none(self):
-        """Test canonicalizing None returns empty dict."""
-        result = _canonicalize_policy(None)
-        assert result == {}
-
-    def test_canonicalize_with_entry_format(self):
-        """Test canonicalizing Splunk entry format."""
-        result = _canonicalize_policy(SAMPLE_POLICY_WITH_CONTENT)
-        assert result["title"] == "Test Policy"
-        assert result["disabled"] == 0
-
-    def test_canonicalize_ignores_unknown_fields(self):
-        """Test canonicalizing ignores unknown fields."""
-        payload = {"title": "Test", "unknown_field": "value"}
-        result = _canonicalize_policy(payload)
-        assert "title" in result
-        assert "unknown_field" not in result
-
-
-class TestDiffCanonical:
-    """Tests for _diff_canonical helper function."""
-
-    def test_diff_no_changes(self):
-        """Test diff with no changes."""
-        desired = {"title": "Test", "disabled": 0}
-        current = {"title": "Test", "disabled": 0}
-        result = _diff_canonical(desired, current)
-        assert result == {}
-
-    def test_diff_with_changes(self):
-        """Test diff with changes."""
-        desired = {"title": "New Title", "disabled": 1}
-        current = {"title": "Old Title", "disabled": 0}
-        result = _diff_canonical(desired, current)
-        assert "title" in result
-        assert result["title"] == ("Old Title", "New Title")
-        assert result["disabled"] == (0, 1)
-
-    def test_diff_only_compares_desired_keys(self):
-        """Test that diff only compares keys in desired."""
-        desired = {"title": "Test"}
-        current = {"title": "Test", "disabled": 0, "extra": "value"}
-        result = _diff_canonical(desired, current)
-        assert result == {}
-
-    def test_diff_complex_fields_json_comparison(self):
-        """Test diff uses JSON comparison for complex fields."""
-        desired = {"filter_criteria": {"condition": "AND", "items": []}}
-        current = {"filter_criteria": {"condition": "OR", "items": []}}
-        result = _diff_canonical(desired, current)
-        assert "filter_criteria" in result
-
-    def test_diff_complex_fields_no_change(self):
-        """Test diff complex fields when no change."""
-        desired = {"filter_criteria": {"condition": "AND", "items": []}}
-        current = {"filter_criteria": {"condition": "AND", "items": []}}
-        result = _diff_canonical(desired, current)
-        assert result == {}
-
-    def test_diff_string_conversion(self):
-        """Test that values are compared as strings."""
-        desired = {"disabled": 1}
-        current = {"disabled": "1"}
-        result = _diff_canonical(desired, current)
-        assert result == {}
-
-    def test_diff_rules_field(self):
-        """Test diff for rules field."""
-        desired = {"rules": [{"name": "rule1"}]}
-        current = {"rules": [{"name": "rule2"}]}
-        result = _diff_canonical(desired, current)
-        assert "rules" in result
-
-
 class TestGetAggregationPolicyById:
     """Tests for get_aggregation_policy_by_id function."""
 
@@ -430,13 +268,12 @@ class TestUpdateAggregationPolicy:
             ItsiRequest(mock_conn, _mock_module()),
             "test_policy_id",
             update_data,
-            SAMPLE_POLICY,
         )
 
         assert status == 200
 
-    def test_update_uses_partial_data(self):
-        """Test update uses is_partial_data parameter."""
+    def test_update_does_not_use_partial_data(self):
+        """Test update does not use is_partial_data (API requires full payload)."""
         mock_conn = MagicMock()
         mock_conn.send_request.return_value = {
             "status": 200,
@@ -448,14 +285,13 @@ class TestUpdateAggregationPolicy:
             ItsiRequest(mock_conn, _mock_module()),
             "test_policy_id",
             {"disabled": 0},
-            SAMPLE_POLICY,
         )
 
         call_args = mock_conn.send_request.call_args
-        assert "is_partial_data=1" in call_args[0][0]
+        assert "is_partial_data" not in call_args[0][0]
 
-    def test_update_merges_with_current(self):
-        """Test update merges with current values."""
+    def test_update_sends_only_provided_fields(self):
+        """Test update sends only the provided fields (partial update)."""
         mock_conn = MagicMock()
         mock_conn.send_request.return_value = {
             "status": 200,
@@ -467,13 +303,12 @@ class TestUpdateAggregationPolicy:
             ItsiRequest(mock_conn, _mock_module()),
             "test_policy_id",
             {"description": "New desc"},
-            SAMPLE_POLICY,
         )
 
         call_args = mock_conn.send_request.call_args
         payload = json.loads(call_args[1]["body"])
-        assert payload["title"] == "Test Policy"  # From current
-        assert payload["description"] == "New desc"  # Updated
+        assert payload["description"] == "New desc"
+        assert "title" not in payload
 
     def test_update_not_found(self):
         """Test update when policy not found."""
@@ -483,7 +318,6 @@ class TestUpdateAggregationPolicy:
             ItsiRequest(mock_conn, _mock_module()),
             "nonexistent",
             {"disabled": 1},
-            {},
         )
 
         assert result is None
@@ -1031,7 +865,7 @@ class TestMain:
         body = call_kwargs["after"]
         assert isinstance(body, dict)
         assert body["title"] == "Complete Policy"
-        assert body["disabled"] is True
+        assert body["disabled"] == 1
         assert body["group_severity"] == "high"
         assert body["priority"] == 10
         assert body["extra"] == "value"
