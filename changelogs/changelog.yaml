@@ -1,3 +1,107 @@
 ---
 ancestor: null
-releases: {}
+releases:
+  1.0.0:
+    changes:
+      minor_changes:
+        - Add comprehensive unit tests for ``ItsiRequest`` in ``tests/unit/test_itsi_request.py``
+        - Add integration tests for itsi_aggregation_policy and itsi_aggregation_policy_info
+          modules.
+        - Add integration tests for itsi_correlation_search and itsi_correlation_search_info
+          modules.
+        - Add new ``ItsiRequest`` class in ``module_utils/itsi_request.py`` as the
+          unified HTTP abstraction layer for all ITSI modules.
+        - Add new module ``itsi_add_episode_comments`` for adding comments to ITSI
+          episodes.
+        - Add new module ``itsi_aggregation_policy_info`` for querying ITSI aggregation
+          policies by ID, title, or listing all.
+        - Add new module ``itsi_aggregation_policy`` for managing ITSI aggregation
+          policies (create, update, delete).
+        - Add new module ``itsi_correlation_search_info`` for querying ITSI correlation
+          searches.
+        - Add new module ``itsi_correlation_search`` for managing ITSI correlation
+          searches (create, update, delete).
+        - Add new module ``itsi_episode_details_info`` for querying ITSI episodes
+          by ID, listing with filters, or retrieving a count.
+        - Add new module ``itsi_glass_table_info`` for querying ITSI Glass Table objects.
+        - Add new module ``itsi_glass_table`` for managing ITSI Glass Table objects
+          (create, update, delete).
+        - Add new module ``itsi_service_info`` for querying ITSI Service objects.
+        - Add new module ``itsi_service`` for managing ITSI Service objects (create,
+          update, delete).
+        - Add new module ``itsi_update_episode_details`` for updating specific fields
+          of ITSI episodes (severity, status, owner, instruction).
+        - Add unit tests for itsi_aggregation_policy and itsi_aggregation_policy_info
+          modules.
+        - Add unit tests for itsi_correlation_search and itsi_correlation_search_info
+          modules.
+        - Add validated content for Event-Driven Ansible (EDA) rulebook activation
+          with Splunk ITSI webhook integration.
+        - Align all modules to use a unified diff implementation for consistent change
+          detection.
+        - Centralize HTTP response status handling in ``ItsiRequest`` class.
+        - Refactor all ITSI modules to use ``ItsiRequest`` instead of the previous
+          standalone functions
+        - Refactor shared utility functions into module_utils/itsi_utils.py for code
+          reuse.
+        - Remove deprecated ``_send``, ``_send_request``, and ``send_itsi_request``
+          functions
+        - Standardize return result across all info modules `(changed, response)`
+        - Standardize return result across all modules `(changed, before, after, diff,
+          response)`
+        - itsi_aggregation_policy - Use dedicated function for handling empty lists
+          in ``filter_criteria`` and ``breaking_criteria``.
+      release_summary: Release summary for v1.0.0
+    fragments:
+      - add_aggregation_policy_modules.yml
+      - add_correlation_search_modules.yml
+      - add_eda_rulebook_activation.yml
+      - add_episode_comments_module.yml
+      - add_episode_details_modules.yml
+      - add_glass_table_modules.yml
+      - add_itsi_request_class.yml
+      - add_service_modules.yml
+      - fix_aggregation_policy_diff_and_criteria.yml
+      - refactor_centralize_error_handling.yml
+      - release-summary.yml
+      - standardize_info_module_response_and_create_after.yml
+    modules:
+      - description: Add comments to Splunk ITSI episodes.
+        name: itsi_add_episode_comments
+        namespace: ""
+      - description: Manage Splunk ITSI aggregation policies.
+        name: itsi_aggregation_policy
+        namespace: ""
+      - description: Get information about Splunk ITSI aggregation policies.
+        name: itsi_aggregation_policy_info
+        namespace: ""
+      - description: Manage Splunk ITSI correlation searches.
+        name: itsi_correlation_search
+        namespace: ""
+      - description: Query Splunk ITSI correlation searches.
+        name: itsi_correlation_search_info
+        namespace: ""
+      - description: Read Splunk ITSI notable_event_group (episodes).
+        name: itsi_episode_details_info
+        namespace: ""
+      - description: Manage Splunk ITSI Glass Table objects via itoa_interface.
+        name: itsi_glass_table
+        namespace: ""
+      - description: Read Splunk ITSI glass table objects via itoa_interface.
+        name: itsi_glass_table_info
+        namespace: ""
+      - description: Manage Splunk ITSI Service objects via itoa_interface.
+        name: itsi_service
+        namespace: ""
+      - description: Gather facts about Splunk ITSI Service objects via itoa_interface.
+        name: itsi_service_info
+        namespace: ""
+      - description: Update specific fields of Splunk ITSI episodes.
+        name: itsi_update_episode_details
+        namespace: ""
+    plugins:
+      httpapi:
+        - description: HttpApi Plugin for Splunk ITSI.
+          name: itsi_api_client
+          namespace: null
+    release_date: "2026-03-04"

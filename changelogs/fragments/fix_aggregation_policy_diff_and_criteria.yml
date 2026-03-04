@@ -1,4 +1,0 @@
----
-minor_changes:
-  - Align all modules to use a unified diff implementation for consistent change detection.
-  - itsi_aggregation_policy - Use dedicated function for handling empty lists in ``filter_criteria`` and ``breaking_criteria``.
