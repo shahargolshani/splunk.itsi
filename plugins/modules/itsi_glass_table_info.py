@@ -3,6 +3,10 @@
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 # Copyright (c) 2026 Splunk ITSI Ansible Collection maintainers
 
+from __future__ import absolute_import, division, print_function
+
+__metaclass__ = type
+
 
 DOCUMENTATION = r"""
 ---
@@ -23,10 +27,11 @@ options:
     type: str
   filter:
     description:
-      - MongoDB-style JSON filter string for listing glass tables.
+      - MongoDB-style filter for listing glass tables.
+      - Accepts a dict or a JSON string.
       - Only applies when C(glass_table_id) is not provided.
-      - "Example: '{\"title\": \"My Table\"}'."
-    type: str
+      - "Example: C({\"title\": \"My Table\"})."
+    type: raw
   fields:
     description:
       - Comma-separated list of field names to include in the response.
@@ -107,6 +112,7 @@ changed:
   returned: always
 """
 
+import json
 from typing import Any, Optional
 
 from ansible.module_utils.basic import AnsibleModule
@@ -156,7 +162,10 @@ def _build_list_params(module_params: dict[str, Any]) -> dict[str, Any]:
     params: dict[str, Any] = {}
     for key in PASSTHROUGH_PARAMS:
         if module_params[key] is not None:
-            params[key] = module_params[key]
+            value = module_params[key]
+            if key == "filter" and isinstance(value, dict):
+                value = json.dumps(value, separators=(",", ":"))
+            params[key] = value
     return params
 
 
@@ -182,7 +191,7 @@ def main() -> None:
     module = AnsibleModule(
         argument_spec=dict(
             glass_table_id=dict(type="str"),
-            filter=dict(type="str"),
+            filter=dict(type="raw"),
             fields=dict(type="str"),
             count=dict(type="int"),
             offset=dict(type="int"),

@@ -1,11 +1,44 @@
 # Splunk ITSI Ansible Collection
 
-<!-- Add CI and code coverage badges here. Samples included below. -->
-<!-- TBD -->
 
-<!-- Describe the collection and why a user would want to use it. What does the collection do? -->
+## Description
 
 The Ansible ITSI collection includes variety of content to help automate the use of Splunk IT Service Intelligence.
+
+## Requirements
+
+- Python >= 3.10
+- Ansible >= 2.17
+
+## Installation
+
+Before using this collection, you need to install it with the Ansible Galaxy command-line tool:
+
+```bash
+ansible-galaxy collection install splunk.itsi
+```
+
+You can also include it in a `requirements.yml` file and install it with `ansible-galaxy collection install -r requirements.yml`, using the format:
+
+```yaml
+---
+collections:
+  - name: splunk.itsi
+```
+
+Note that if you install the collection from Ansible Galaxy, it will not be upgraded automatically when you upgrade the `ansible` package. To upgrade the collection to the latest available version, run the following command:
+
+```bash
+ansible-galaxy collection install splunk.itsi --upgrade
+```
+
+You can also install a specific version of the collection, for example, if you need to downgrade when something is broken in the latest version (please report an issue in this repository). Use the following syntax to install version `1.0.0`
+
+```bash
+ansible-galaxy collection install splunk.itsi==1.0.0
+```
+
+See [using Ansible collections](https://docs.ansible.com/projects/ansible/devel/user_guide/collections_using.html) for more details.
 
 ## Code of Conduct
 
@@ -25,6 +58,13 @@ If your collection is not present on the Ansible forum yet, please check out the
   - [News & Announcements](https://forum.ansible.com/c/news/5): track project-wide announcements including social events. The [Bullhorn newsletter](https://docs.ansible.com/projects/ansible/devel/community/communication.html#the-bullhorn), which is used to announce releases and important changes, can also be found here.
 
 For more information about communication, see the [Ansible communication guide](https://docs.ansible.com/projects/ansible/devel/community/communication.html).
+
+## Support
+
+As a Red Hat Ansible [Certified Content](https://catalog.redhat.com/software/search?target_platforms=Red%20Hat%20Ansible%20Automation%20Platform), this collection is entitled to [support](https://access.redhat.com/support/) through [Ansible Automation Platform](https://www.redhat.com/en/technologies/management/ansible) (AAP).
+
+If a support case cannot be opened with Red Hat and the collection has been obtained either from [Galaxy](https://galaxy.ansible.com/ui/repo/published/splunk/itsi/) or [GitHub](https://github.com/ansible-collections/splunk.itsi), there is community support available at no charge.
+
 
 ## Contributing to this collection
 
@@ -46,7 +86,7 @@ We also use the following guidelines:
 
 ## Collection maintenance
 
-The current maintainers are listed in the [MAINTAINERS](MAINTAINERS) file. If you have questions or need help, feel free to mention them in the proposals.
+The current maintainers are listed in the [MAINTAINERS](https://github.com/ansible-collections/splunk.itsi/blob/main/MAINTAINERS) file. If you have questions or need help, feel free to mention them in the proposals.
 
 To learn how to maintain/become a maintainer of this collection, refer to the [Maintainer guidelines](https://docs.ansible.com/projects/ansible/devel/community/maintainers.html).
 
@@ -62,8 +102,6 @@ They also should be subscribed to Ansible's [The Bullhorn newsletter](https://do
 The process of decision making in this collection is based on discussing and finding consensus among participants.
 
 Every voice is important. If you have something on your mind, create an issue or dedicated discussion and let's discuss it!
-
-## Tested with Ansible
 
 <!--start requires_ansible-->
 ## Ansible version compatibility
@@ -105,47 +143,113 @@ Name | Description
 
 <!--end collection content-->
 
-## Using this collection
+## Use Cases
 
-### Installing the Collection from Ansible Galaxy
+`inventory.ini` (Note the password should be managed by a [Vault](https://docs.ansible.com/ansible/latest/user_guide/vault.html) for a production environment.
 
-Before using this collection, you need to install it with the Ansible Galaxy command-line tool:
+```
+[itsi]
+splunk.itsi.com
 
-```bash
-ansible-galaxy collection install splunk.itsi
+[itsi:vars]
+ansible_connection=httpapi
+ansible_network_os=splunk.itsi.itsi_api_client
+ansible_httpapi_use_ssl=true
+ansible_httpapi_port=8089
+ansible_httpapi_validate_certs=false
+ansible_user=admin
+ansible_httpapi_pass= {{ vault_pass }}
+#ansible_httpapi_token= {{ valut_token }}
+
+# Enable debug logging for httpapi plugin
+ansible_persistent_log_messages=true
 ```
 
-You can also include it in a `requirements.yml` file and install it with `ansible-galaxy collection install -r requirements.yml`, using the format:
+### Using the modules with Fully Qualified Collection Name (FQCN)
 
-```yaml
+With [Ansible
+Collections](https://docs.ansible.com/ansible/latest/dev_guide/developing_collections.html)
+there are various ways to utilize them either by calling specific Content from
+the Collection, such as a module, by its Fully Qualified Collection Name (FQCN)
+as we'll show in this example or by defining a Collection Search Path as the
+examples below will display.
+
+We recommend the FQCN method but the
+shorthand options listed below exist for convenience.
+
+`splunk_with_collections_fqcn_example.yml`
+
+```
 ---
-collections:
-  - name: splunk.itsi
+# Create new aggregation policy (no policy_id = always creates new)
+- name: Create new aggregation policy
+  splunk.itsi.itsi_aggregation_policy:
+    title: "Test Aggregation Policy (Ansible)"
+    description: "Test policy created by Ansible"
+    disabled: false
+    priority: 5
+    group_severity: "medium"
+    group_status: "new"
+    group_title: "%title%"
+    group_description: "%description%"
+    filter_criteria:
+      condition: "AND"
+      items: []
+    breaking_criteria:
+      condition: "AND"
+      items: []
+    state: present
+  register: create_result
+# create_result.response._key contains the generated policy_id
+
+# Update existing aggregation policy (policy_id required, title optional)
+- name: Update aggregation policy settings
+  splunk.itsi.itsi_aggregation_policy:
+    policy_id: "{{ create_result.response._key }}"
+    group_severity: "high"
+    disabled: false
+    filter_criteria:
+      condition: "OR"
+      items:
+        [
+          {
+            "type": "clause",
+            "config":
+              {
+                "items":
+                  [
+                    {
+                      "type": "notable_event_field",
+                      "config":
+                        { "field": "severity", "operator": "<", "value": "6" },
+                    },
+                  ],
+                "condition": "AND",
+              },
+          },
+        ]
+    state: present
+  register: update_result
+# update_result.diff shows fields that changed
 ```
 
-Note that if you install the collection from Ansible Galaxy, it will not be upgraded automatically when you upgrade the `ansible` package. To upgrade the collection to the latest available version, run the following command:
+## Testing
 
-```bash
-ansible-galaxy collection install splunk.itsi --upgrade
-```
+This collection is tested against all currently maintained Ansible versions and with all currently supported (by Ansible on the target node) Python versions.
+You can find the list of maintained Ansible versions and their respective Python versions on [docs.ansible.com](https://docs.ansible.com/ansible/devel/reference_appendices/release_and_maintenance.html).
 
-You can also install a specific version of the collection, for example, if you need to downgrade when something is broken in the latest version (please report an issue in this repository). Use the following syntax to install version `1.0.0`:
 
-```bash
-ansible-galaxy collection install splunk.itsi:==1.0.0
-```
+## Release Notes and Roadmap
 
-See [using Ansible collections](https://docs.ansible.com/projects/ansible/devel/user_guide/collections_using.html) for more details.
-
-## Release notes
+### Release notes
 
 See the [changelog](https://github.com/ansible-collections/splunk.itsi/tree/main/CHANGELOG.rst).
 
-## Roadmap
+### Roadmap
 
 <!-- Optional. Include the roadmap for this collection, and the proposed release/versioning strategy so users can anticipate the upgrade/update cycle. -->
 
-## More information
+## Related Information
 
 <!-- List out where the user can find additional information, such as working group meeting times, slack/IRC channels, or documentation for the product this collection automates. At a minimum, link to: -->
 
@@ -156,7 +260,7 @@ See the [changelog](https://github.com/ansible-collections/splunk.itsi/tree/main
 - [The Bullhorn (the Ansible contributor newsletter)](https://docs.ansible.com/projects/ansible/devel/community/communication.html#the-bullhorn)
 - [Important announcements for maintainers](https://github.com/ansible-collections/news-for-maintainers)
 
-## Licensing
+## License Information
 
 <!-- Include the appropriate license information here and a pointer to the full licensing details. If the collection contains modules migrated from the ansible/ansible repo, you must use the same license that existed in the ansible/ansible repo. See the GNU license example below. -->
 

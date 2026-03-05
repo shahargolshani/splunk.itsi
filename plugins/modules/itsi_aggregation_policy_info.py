@@ -4,6 +4,10 @@
 # Copyright (c) 2026 Splunk ITSI Ansible Collection maintainers
 """Ansible module for querying Splunk ITSI aggregation policies."""
 
+from __future__ import absolute_import, division, print_function
+
+__metaclass__ = type
+
 
 DOCUMENTATION = r"""
 ---
