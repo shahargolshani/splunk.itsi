@@ -1,4 +1,0 @@
----
-minor_changes:
-  - Add new module ``itsi_service`` for managing ITSI Service objects (create, update, delete).
-  - Add new module ``itsi_service_info`` for querying ITSI Service objects.

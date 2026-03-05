@@ -1,3 +1,0 @@
----
-minor_changes:
-  - Centralize HTTP response status handling in ``ItsiRequest`` class.

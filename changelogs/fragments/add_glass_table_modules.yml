@@ -1,4 +1,0 @@
----
-minor_changes:
-  - Add new module ``itsi_glass_table`` for managing ITSI Glass Table objects (create, update, delete).
-  - Add new module ``itsi_glass_table_info`` for querying ITSI Glass Table objects.
