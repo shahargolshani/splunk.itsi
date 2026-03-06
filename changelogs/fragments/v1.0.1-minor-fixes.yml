@@ -1,5 +1,0 @@
----
-bugfixes:
-  - Updated README.md according to Ansible Certified Collections README Template.
-  - Added required ``future imports`` and ``__metaclass__ = type`` boilerplate to all plugin and module Python files for ansible-test sanity compliance.
-  - Fixed ``requirements.txt`` and remove ansible-core dependency.

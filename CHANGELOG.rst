@@ -4,6 +4,21 @@ Splunk ITSI Collection Release Notes
 
 .. contents:: Topics
 
+v1.0.1
+======
+
+Release Summary
+---------------
+
+Release summary for v1.0.1
+
+Bugfixes
+--------
+
+- Added required ``future imports`` and ``__metaclass__ = type`` boilerplate to all plugin and module Python files for ansible-test sanity compliance.
+- Fixed ``requirements.txt`` and remove ansible-core dependency.
+- Updated README.md according to Ansible Certified Collections README Template.
+
 v1.0.0
 ======
 

@@ -105,3 +105,15 @@ releases:
           name: itsi_api_client
           namespace: null
     release_date: "2026-03-04"
+  1.0.1:
+    changes:
+      bugfixes:
+        - Added required ``future imports`` and ``__metaclass__ = type`` boilerplate
+          to all plugin and module Python files for ansible-test sanity compliance.
+        - Fixed ``requirements.txt`` and remove ansible-core dependency.
+        - Updated README.md according to Ansible Certified Collections README Template.
+      release_summary: Release summary for v1.0.1
+    fragments:
+      - release-summary.yml
+      - v1.0.1-minor-fixes.yml
+    release_date: "2026-03-06"
