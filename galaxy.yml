@@ -13,7 +13,7 @@ documentation: https://github.com/ansible-collections/splunk.itsi
 homepage: https://github.com/ansible-collections/splunk.itsi
 issues: https://github.com/ansible-collections/splunk.itsi/issues
 readme: README.md
-version: "1.0.0"
+version: "1.0.1"
 dependencies:
   ansible.netcommon: ">=6.0.0"
 build_ignore:

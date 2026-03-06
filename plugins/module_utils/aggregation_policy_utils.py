@@ -3,6 +3,10 @@
 # Copyright (c) 2026, Splunk ITSI Ansible Collection maintainers
 """Utility functions for Splunk ITSI aggregation policy modules."""
 
+from __future__ import absolute_import, division, print_function
+
+__metaclass__ = type
+
 from typing import Any, Dict, Optional, Tuple
 from urllib.parse import quote_plus
 

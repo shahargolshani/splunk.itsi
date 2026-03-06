@@ -77,15 +77,16 @@ Parameters
                     <b>filter</b>
                     <a class="ansibleOptionLink" href="#parameter-" title="Permalink to this option"></a>
                     <div style="font-size: small">
-                        <span style="color: purple">string</span>
+                        <span style="color: purple">raw</span>
                     </div>
                 </td>
                 <td>
                 </td>
                 <td>
-                        <div>MongoDB-style JSON filter string for listing glass tables.</div>
+                        <div>MongoDB-style filter for listing glass tables.</div>
+                        <div>Accepts a dict or a JSON string.</div>
                         <div>Only applies when <code>glass_table_id</code> is not provided.</div>
-                        <div>Example: &#x27;{&quot;title&quot;: &quot;My Table&quot;}&#x27;.</div>
+                        <div>Example: <code>{&quot;title&quot;: &quot;My Table&quot;}</code>.</div>
                 </td>
             </tr>
             <tr>
