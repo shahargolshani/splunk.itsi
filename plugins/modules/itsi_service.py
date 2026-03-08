@@ -4,7 +4,11 @@
 # Copyright: (c) 2025, Splunk ITSI Ansible Collection Maintainers
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
-from __future__ import absolute_import, division, print_function
+from __future__ import (
+    absolute_import,
+    division,
+    print_function,
+)
 
 __metaclass__ = type
 
@@ -159,7 +163,13 @@ response:
 
 import json
 import re
-from typing import Any, Dict, List, Optional, Union
+from typing import (
+    Any,
+    Dict,
+    List,
+    Optional,
+    Union,
+)
 from urllib.parse import quote_plus
 
 from ansible.module_utils.basic import AnsibleModule

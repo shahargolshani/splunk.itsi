@@ -5,7 +5,10 @@
 
 
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import (
+    MagicMock,
+    patch,
+)
 
 import pytest
 
@@ -15,7 +18,11 @@ from ansible_collections.splunk.itsi.plugins.modules.itsi_update_episode_details
     _build_update_data,
     main,
 )
-from conftest import AnsibleExitJson, AnsibleFailJson, make_mock_conn
+from conftest import (
+    AnsibleExitJson,
+    AnsibleFailJson,
+    make_mock_conn,
+)
 
 # Sample data fixtures
 SAMPLE_EPISODE = {

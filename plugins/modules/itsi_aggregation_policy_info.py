@@ -4,7 +4,11 @@
 # Copyright (c) 2026 Splunk ITSI Ansible Collection maintainers
 """Ansible module for querying Splunk ITSI aggregation policies."""
 
-from __future__ import absolute_import, division, print_function
+from __future__ import (
+    absolute_import,
+    division,
+    print_function,
+)
 
 __metaclass__ = type
 
@@ -124,7 +128,11 @@ response:
 """
 
 # Ansible imports
-from typing import Any, Optional, Tuple
+from typing import (
+    Any,
+    Optional,
+    Tuple,
+)
 
 from ansible.module_utils.basic import AnsibleModule
 from ansible.module_utils.connection import Connection

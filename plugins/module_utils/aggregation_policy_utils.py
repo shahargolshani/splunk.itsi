@@ -3,11 +3,20 @@
 # Copyright (c) 2026, Splunk ITSI Ansible Collection maintainers
 """Utility functions for Splunk ITSI aggregation policy modules."""
 
-from __future__ import absolute_import, division, print_function
+from __future__ import (
+    absolute_import,
+    division,
+    print_function,
+)
 
 __metaclass__ = type
 
-from typing import Any, Dict, Optional, Tuple
+from typing import (
+    Any,
+    Dict,
+    Optional,
+    Tuple,
+)
 from urllib.parse import quote_plus
 
 BASE_AGGREGATION_POLICY_ENDPOINT = "servicesNS/nobody/SA-ITOA/event_management_interface/notable_event_aggregation_policy"

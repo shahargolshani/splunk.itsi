@@ -4,6 +4,7 @@ line-length = 140
 [tool.isort]
 profile = "black"
 line_length = 140
+force_grid_wrap = 2
 
 [tool.pylint.format]
 max-line-length = 140

@@ -2,11 +2,19 @@
 # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 # Copyright (c) 2026, Splunk ITSI Ansible Collection maintainers
 """Shared pure-Python utilities for Splunk ITSI Ansible modules."""
-from __future__ import absolute_import, annotations, division, print_function
+from __future__ import (
+    absolute_import,
+    division,
+    print_function,
+)
 
 __metaclass__ = type
 
-from typing import Any, Callable, Optional
+from typing import (
+    Any,
+    Callable,
+    Optional,
+)
 
 
 def build_have_conf(

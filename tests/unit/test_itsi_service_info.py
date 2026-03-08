@@ -5,7 +5,10 @@
 
 
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import (
+    MagicMock,
+    patch,
+)
 
 import pytest
 
@@ -14,7 +17,11 @@ from ansible_collections.splunk.itsi.plugins.modules.itsi_service_info import (
     _build_filter,
     main,
 )
-from conftest import AnsibleExitJson, AnsibleFailJson, make_mock_conn
+from conftest import (
+    AnsibleExitJson,
+    AnsibleFailJson,
+    make_mock_conn,
+)
 
 # Sample test data
 SAMPLE_SERVICE = {

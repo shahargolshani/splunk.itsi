@@ -5,7 +5,10 @@
 
 
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import (
+    MagicMock,
+    patch,
+)
 
 import pytest
 from ansible_collections.splunk.itsi.plugins.module_utils.glass_table import (
@@ -18,7 +21,11 @@ from ansible_collections.splunk.itsi.plugins.modules.itsi_glass_table_info impor
     _list_glass_tables,
     main,
 )
-from conftest import AnsibleExitJson, AnsibleFailJson, make_mock_conn
+from conftest import (
+    AnsibleExitJson,
+    AnsibleFailJson,
+    make_mock_conn,
+)
 
 SAMPLE_GT = {
     "_key": "abc123",

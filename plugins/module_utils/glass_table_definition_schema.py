@@ -7,7 +7,11 @@ Auto-generated from glass_table_definition_schema.json.
 Do not edit by hand -- update the source JSON and regenerate.
 """
 
-from __future__ import absolute_import, division, print_function
+from __future__ import (
+    absolute_import,
+    division,
+    print_function,
+)
 
 __metaclass__ = type
 

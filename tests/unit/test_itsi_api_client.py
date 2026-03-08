@@ -6,7 +6,10 @@
 
 import base64
 import io
-from unittest.mock import MagicMock, patch
+from unittest.mock import (
+    MagicMock,
+    patch,
+)
 
 
 class MockConnection:

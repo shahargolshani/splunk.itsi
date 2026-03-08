@@ -5,7 +5,10 @@
 
 
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import (
+    MagicMock,
+    patch,
+)
 
 import pytest
 from ansible_collections.splunk.itsi.plugins.module_utils.aggregation_policy_utils import (
@@ -26,7 +29,11 @@ from ansible_collections.splunk.itsi.plugins.modules.itsi_aggregation_policy_inf
     get_aggregation_policies_by_title,
     main,
 )
-from conftest import AnsibleExitJson, AnsibleFailJson, make_mock_conn
+from conftest import (
+    AnsibleExitJson,
+    AnsibleFailJson,
+    make_mock_conn,
+)
 
 # Sample response payloads for testing
 SAMPLE_POLICY = {

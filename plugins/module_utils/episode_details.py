@@ -3,11 +3,18 @@
 # Copyright (c) 2026, Splunk ITSI Ansible Collection maintainers
 """Episode details utilities for Splunk ITSI Ansible modules."""
 
-from __future__ import absolute_import, division, print_function
+from __future__ import (
+    absolute_import,
+    division,
+    print_function,
+)
 
 __metaclass__ = type
 
-from typing import Any, Optional
+from typing import (
+    Any,
+    Optional,
+)
 from urllib.parse import quote_plus
 
 from ansible_collections.splunk.itsi.plugins.module_utils.itsi_request import ItsiRequest

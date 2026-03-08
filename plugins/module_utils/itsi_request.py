@@ -3,12 +3,22 @@
 # Copyright (c) 2026, Splunk ITSI Ansible Collection maintainers
 """Splunk ITSI request utilities for Ansible modules."""
 
-from __future__ import absolute_import, division, print_function
+from __future__ import (
+    absolute_import,
+    division,
+    print_function,
+)
 
 __metaclass__ = type
 
 import json
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import (
+    Any,
+    Dict,
+    Optional,
+    Tuple,
+    Union,
+)
 from urllib.parse import urlencode
 
 

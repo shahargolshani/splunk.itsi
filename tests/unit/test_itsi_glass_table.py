@@ -5,7 +5,10 @@
 
 
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import (
+    MagicMock,
+    patch,
+)
 
 import pytest
 from ansible_collections.splunk.itsi.plugins.modules.itsi_glass_table import (
@@ -14,7 +17,11 @@ from ansible_collections.splunk.itsi.plugins.modules.itsi_glass_table import (
     _sync_title_desc_into_definition,
     main,
 )
-from conftest import AnsibleExitJson, AnsibleFailJson, make_mock_conn
+from conftest import (
+    AnsibleExitJson,
+    AnsibleFailJson,
+    make_mock_conn,
+)
 
 MODULE_PATH = "ansible_collections.splunk.itsi.plugins.modules.itsi_glass_table"
 VALIDATOR_PATH = f"{MODULE_PATH}._validate_definition_or_fail"

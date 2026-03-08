@@ -5,7 +5,10 @@
 
 
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import (
+    MagicMock,
+    patch,
+)
 
 import pytest
 
@@ -30,7 +33,11 @@ from ansible_collections.splunk.itsi.plugins.module_utils.correlation_search_uti
 from ansible_collections.splunk.itsi.plugins.modules.itsi_correlation_search_info import (
     main,
 )
-from conftest import AnsibleExitJson, AnsibleFailJson, make_mock_conn
+from conftest import (
+    AnsibleExitJson,
+    AnsibleFailJson,
+    make_mock_conn,
+)
 
 # Sample response payloads for testing
 SAMPLE_ENTRY = {
