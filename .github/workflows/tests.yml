@@ -30,8 +30,10 @@ jobs:
     uses: ansible/ansible-content-actions/.github/workflows/build_import.yaml@main
   ansible-lint:
     uses: ansible/ansible-content-actions/.github/workflows/ansible_lint.yaml@main
-  sanity:
-    uses: ansible/ansible-content-actions/.github/workflows/sanity.yaml@main
+  # Temporarily disabled until ansible-test sanity is fixed
+  # sanity.yaml is replacing this workflow until ansible-test sanity is fixed
+  # sanity:
+  #   uses: ansible/ansible-content-actions/.github/workflows/sanity.yaml@main
   unit-galaxy:
     uses: ansible/ansible-content-actions/.github/workflows/unit.yaml@main
   all_green:
@@ -39,7 +41,7 @@ jobs:
     needs:
       - changelog
       - build-import
-      - sanity
+      # - sanity
       - unit-galaxy
       - ansible-lint
       - sonar
@@ -50,7 +52,7 @@ jobs:
           set([
           '${{ needs.changelog.result }}',
           '${{ needs.build-import.result }}',
-          '${{ needs.sanity.result }}',
+          # '${{ needs.sanity.result }}',
           '${{ needs.unit-galaxy.result }}',
           '${{ needs.ansible-lint.result }}',
           '${{ needs.sonar.result }}'
