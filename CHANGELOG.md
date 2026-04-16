@@ -2,27 +2,61 @@
 
 **Topics**
 
-- <a href="#v1-0-1">v1\.0\.1</a>
+- <a href="#v2-0-0">v2\.0\.0</a>
   - <a href="#release-summary">Release Summary</a>
-  - <a href="#bugfixes">Bugfixes</a>
-- <a href="#v1-0-0">v1\.0\.0</a>
-  - <a href="#release-summary-1">Release Summary</a>
   - <a href="#minor-changes">Minor Changes</a>
+  - <a href="#breaking-changes--porting-guide">Breaking Changes / Porting Guide</a>
+  - <a href="#bugfixes">Bugfixes</a>
+- <a href="#v1-0-1">v1\.0\.1</a>
+  - <a href="#release-summary-1">Release Summary</a>
+  - <a href="#bugfixes-1">Bugfixes</a>
+- <a href="#v1-0-0">v1\.0\.0</a>
+  - <a href="#release-summary-2">Release Summary</a>
+  - <a href="#minor-changes-1">Minor Changes</a>
   - <a href="#new-plugins">New Plugins</a>
     - <a href="#httpapi">Httpapi</a>
   - <a href="#new-modules">New Modules</a>
 
-<a id="v1-0-1"></a>
+<a id="v2-0-0"></a>
 
-## v1\.0\.1
+## v2\.0\.0
 
 <a id="release-summary"></a>
 
 ### Release Summary
 
-Release summary for v1\.0\.1
+This major release drops the <code>ansible\.netcommon</code> dependency\, internalising the utilities the collection actually needs\, and adds support for ansible\-core 2\.21\. The <code>itsi_glass_table</code> module now raises an explicit error when the <code>jsonschema</code> package is missing\.
+
+<a id="minor-changes"></a>
+
+### Minor Changes
+
+- Integration tests now use the core <code>httpapi</code> connection plugin instead of <code>ansible\.netcommon\.httpapi</code>\.
+- ansible\-core 2\.21 is now supported\. Replaced <code>ansible\.module_utils\.six\.moves\.urllib\.parse</code> with the Python standard library <code>urllib\.parse</code> in <code>itsi_correlation_search</code>\.
+
+<a id="breaking-changes--porting-guide"></a>
+
+### Breaking Changes / Porting Guide
+
+- The <code>ansible\.netcommon</code> collection is no longer a dependency\. The <code>remove_empties</code> and <code>dict_diff</code> utilities are now provided locally in <code>splunk_utils\.py</code>\. Users who need advanced httpapi features \(proxy\, client certificates\, timeouts\) can install <code>ansible\.netcommon</code> separately\.
 
 <a id="bugfixes"></a>
+
+### Bugfixes
+
+- itsi_glass_table \- Fail with a clear error when the <code>jsonschema</code> package is not installed instead of silently skipping definition validation\.
+
+<a id="v1-0-1"></a>
+
+## v1\.0\.1
+
+<a id="release-summary-1"></a>
+
+### Release Summary
+
+Release summary for v1\.0\.1
+
+<a id="bugfixes-1"></a>
 
 ### Bugfixes
 
@@ -34,13 +68,13 @@ Release summary for v1\.0\.1
 
 ## v1\.0\.0
 
-<a id="release-summary-1"></a>
+<a id="release-summary-2"></a>
 
 ### Release Summary
 
 Release summary for v1\.0\.0
 
-<a id="minor-changes"></a>
+<a id="minor-changes-1"></a>
 
 ### Minor Changes
 

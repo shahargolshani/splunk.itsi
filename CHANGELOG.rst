@@ -4,6 +4,30 @@ Splunk ITSI Collection Release Notes
 
 .. contents:: Topics
 
+v2.0.0
+======
+
+Release Summary
+---------------
+
+This major release drops the ``ansible.netcommon`` dependency, internalising the utilities the collection actually needs, and adds support for ansible-core 2.21. The ``itsi_glass_table`` module now raises an explicit error when the ``jsonschema`` package is missing.
+
+Minor Changes
+-------------
+
+- Integration tests now use the core ``httpapi`` connection plugin instead of ``ansible.netcommon.httpapi``.
+- ansible-core 2.21 is now supported. Replaced ``ansible.module_utils.six.moves.urllib.parse`` with the Python standard library ``urllib.parse`` in ``itsi_correlation_search``.
+
+Breaking Changes / Porting Guide
+--------------------------------
+
+- The ``ansible.netcommon`` collection is no longer a dependency. The ``remove_empties`` and ``dict_diff`` utilities are now provided locally in ``splunk_utils.py``. Users who need advanced httpapi features (proxy, client certificates, timeouts) can install ``ansible.netcommon`` separately.
+
+Bugfixes
+--------
+
+- itsi_glass_table - Fail with a clear error when the ``jsonschema`` package is not installed instead of silently skipping definition validation.
+
 v1.0.1
 ======
 

@@ -1,3 +1,0 @@
----
-bugfixes:
-  - itsi_glass_table - Fail with a clear error when the ``jsonschema`` package is not installed instead of silently skipping definition validation.
