@@ -2,11 +2,12 @@
 namespace: splunk
 name: itsi
 authors:
-  - Ansible Ecosystem Engineering team
+  - Ansible Ecosystem Engineering team (@eco-ansible-content)
   - Shahar Golshani <sgolshan@redhat.com>
   - Ron Gershburg <rgershbu@redhat.com>
 description: Ansible Collection for Splunk IT Service Intelligence
-license_file: LICENSE
+license:
+  - GPL-3.0-or-later
 tags: ["monitoring", "splunk"]
 repository: https://github.com/ansible-collections/splunk.itsi
 documentation: https://github.com/ansible-collections/splunk.itsi
@@ -17,12 +18,11 @@ version: "2.0.0"
 dependencies: {}
 build_ignore:
   # https://docs.ansible.com/ansible/devel/dev_guide/developing_collections_distributing.html#ignoring-files-and-folders
-  - codecov.yml
-  - sonar-project.properties
+  - "*.tar.gz"
   - .ansible-lint
   - .azure-pipelines
-  - .cursor
   - .claude
+  - .cursor
   - .darglint
   - .flake8
   - .github
@@ -32,3 +32,12 @@ build_ignore:
   - .pytest_cache
   - .vscode
   - .yamllint
+  - CHANGELOG.md
+  - CODE_OF_CONDUCT.md
+  - codecov.yml
+  - CONTRIBUTING.md
+  - MAINTAINERS
+  - pyproject.toml
+  - REVIEW_CHECKLIST.md
+  - sonar-project.properties
+  - tox-ansible.ini

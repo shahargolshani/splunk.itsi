@@ -1,5 +1,6 @@
 [itsi]
-${ITSI_HOSTNAME}
+splunk-itsi-9.4 ansible_host=${SPLUNK_ITSI_9_4}
+splunk-itsi-10.4 ansible_host=${SPLUNK_ITSI_10_4}
 
 [itsi:vars]
 ansible_connection=httpapi
