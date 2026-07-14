@@ -76,6 +76,9 @@ jobs:
         with:
           path: ansible_collections/splunk/itsi
           ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
+          # Safe: the 'approve' job above requires a maintainer to approve via the
+          # eco-itsi-protected environment gate before this job runs.
+          allow-unsafe-pr-checkout: true
 
       - name: Install ansible-core (${{ matrix.ansible_version }})
         working-directory: ansible_collections/splunk/itsi
