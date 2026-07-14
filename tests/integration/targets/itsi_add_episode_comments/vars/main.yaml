@@ -1,6 +1,11 @@
 ---
-# Pre-existing episode _key (same as itsi_episode_details integration tests)
-test_episode_id: "84cb0211-6235-4058-acfc-80780649c6b8"
+# Pre-existing episode _key (from the ITSI KV store), keyed by inventory hostname.
+# Each server fixture has its own stable episode that is guaranteed to exist.
+test_episode_id_map:
+  "splunk-itsi-9.4": "84cb0211-6235-4058-acfc-80780649c6b8"
+  "splunk-itsi-10.4": "728a5acd-a460-4b6b-9e44-1a0a56f24566"
+
+test_episode_id: "{{ test_episode_id_map[inventory_hostname] }}"
 
 # Comment text used across test cases
 test_comment_text: "Integration test comment from Ansible"
